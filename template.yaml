@@ -1,0 +1,319 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  Flaunt shared serverless backend. Provisions foundational, empty
+  resources for each planned service (API Gateway, Cognito, AppSync,
+  DynamoDB, EventBridge, SQS, SES) plus one placeholder health-check
+  Lambda — no business logic yet, features land on top of this later.
+  Must be deployed in us-east-1.
+
+Parameters:
+  HostedZoneId:
+    Type: String
+    Description: >
+      Route 53 Hosted Zone ID for flaunt.network. Find it with:
+      aws route53 list-hosted-zones-by-name --dns-name flaunt.network
+
+  ApiDomainName:
+    Type: String
+    Default: api.flaunt.network
+    Description: Custom domain for the REST/HTTP API.
+
+  GraphqlDomainName:
+    Type: String
+    Default: graphql.flaunt.network
+    Description: Custom domain for the AppSync GraphQL API.
+
+  RootDomainName:
+    Type: String
+    Default: flaunt.network
+    Description: Root domain, used for the SES sending identity.
+
+Globals:
+  Function:
+    Runtime: nodejs20.x
+    Timeout: 10
+    MemorySize: 128
+
+Resources:
+  # ---------------------------------------------------------------------
+  # API Gateway (HTTP API) + custom domain
+  # ---------------------------------------------------------------------
+  ApiCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref ApiDomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref ApiDomainName
+          HostedZoneId: !Ref HostedZoneId
+
+  FlauntHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      Domain:
+        DomainName: !Ref ApiDomainName
+        CertificateArn: !Ref ApiCertificate
+        EndpointConfiguration: REGIONAL
+        Route53:
+          HostedZoneId: !Ref HostedZoneId
+
+  HealthFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: flaunt-backend-health-lambda-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  HealthFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: flaunt-backend-health
+      CodeUri: src/handlers/health/
+      Handler: app.handler
+      Role: !GetAtt HealthFunctionRole.Arn
+      Events:
+        HealthCheck:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref FlauntHttpApi
+            Path: /health
+            Method: GET
+
+  # ---------------------------------------------------------------------
+  # Cognito (auth foundation, also used as AppSync's primary auth mode)
+  # ---------------------------------------------------------------------
+  FlauntUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: flaunt-user-pool
+      UsernameAttributes: [email]
+      AutoVerifiedAttributes: [email]
+      Schema:
+        - Name: email
+          Required: true
+          Mutable: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireLowercase: true
+          RequireUppercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+
+  FlauntUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: flaunt-app-client
+      UserPoolId: !Ref FlauntUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_SRP_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+
+  # ---------------------------------------------------------------------
+  # AppSync (GraphQL API, Cognito User Pool auth) + custom domain
+  # ---------------------------------------------------------------------
+  GraphqlCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref GraphqlDomainName
+      ValidationMethod: DNS
+      DomainValidationOptions:
+        - DomainName: !Ref GraphqlDomainName
+          HostedZoneId: !Ref HostedZoneId
+
+  GraphQLApi:
+    Type: AWS::AppSync::GraphQLApi
+    Properties:
+      Name: flaunt-graphql-api
+      AuthenticationType: AMAZON_COGNITO_USER_POOLS
+      UserPoolConfig:
+        UserPoolId: !Ref FlauntUserPool
+        AwsRegion: !Ref AWS::Region
+        DefaultAction: ALLOW
+      AdditionalAuthenticationProviders:
+        - AuthenticationType: AWS_IAM
+
+  GraphQLSchema:
+    Type: AWS::AppSync::GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Definition: |
+        type Query {
+          health: String
+        }
+
+  NoneDataSource:
+    Type: AWS::AppSync::DataSource
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      Name: NoneDataSource
+      Type: NONE
+
+  HealthResolver:
+    Type: AWS::AppSync::Resolver
+    DependsOn: GraphQLSchema
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      TypeName: Query
+      FieldName: health
+      DataSourceName: !GetAtt NoneDataSource.Name
+      Runtime:
+        Name: APPSYNC_JS
+        RuntimeVersion: "1.0.0"
+      Code: |
+        export function request(ctx) {
+          return {};
+        }
+        export function response(ctx) {
+          return "ok";
+        }
+
+  GraphqlDomainNameResource:
+    Type: AWS::AppSync::DomainName
+    Properties:
+      DomainName: !Ref GraphqlDomainName
+      CertificateArn: !Ref GraphqlCertificate
+
+  GraphqlDomainAssociation:
+    Type: AWS::AppSync::DomainNameApiAssociation
+    Properties:
+      ApiId: !GetAtt GraphQLApi.ApiId
+      DomainName: !Ref GraphqlDomainNameResource
+
+  GraphqlRecordSet:
+    Type: AWS::Route53::RecordSet
+    DependsOn: GraphqlDomainAssociation
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref GraphqlDomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt GraphqlDomainNameResource.AppSyncDomainName
+        HostedZoneId: !GetAtt GraphqlDomainNameResource.HostedZoneId
+        EvaluateTargetHealth: false
+
+  # ---------------------------------------------------------------------
+  # DynamoDB (single-table design placeholder)
+  # ---------------------------------------------------------------------
+  FlauntTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: flaunt-table
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+        - AttributeName: GSI1PK
+          AttributeType: S
+        - AttributeName: GSI1SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: GSI1PK
+              KeyType: HASH
+            - AttributeName: GSI1SK
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+
+  # ---------------------------------------------------------------------
+  # EventBridge (custom bus, no rules yet)
+  # ---------------------------------------------------------------------
+  FlauntEventBus:
+    Type: AWS::Events::EventBus
+    Properties:
+      Name: flaunt-event-bus
+
+  # ---------------------------------------------------------------------
+  # SQS (one queue + DLQ, no consumers yet)
+  # ---------------------------------------------------------------------
+  FlauntDeadLetterQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: flaunt-queue-dlq
+      MessageRetentionPeriod: 1209600
+
+  FlauntQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: flaunt-queue
+      VisibilityTimeout: 30
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt FlauntDeadLetterQueue.Arn
+        maxReceiveCount: 5
+
+  # ---------------------------------------------------------------------
+  # SES (domain identity + DKIM, sandbox mode lifted manually via AWS Support)
+  # ---------------------------------------------------------------------
+  FlauntEmailIdentity:
+    Type: AWS::SES::EmailIdentity
+    Properties:
+      EmailIdentity: !Ref RootDomainName
+
+  SesDkimRecord1:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${FlauntEmailIdentity.DkimDNSTokenName1}._domainkey.${RootDomainName}"
+      Type: CNAME
+      TTL: "1800"
+      ResourceRecords:
+        - !GetAtt FlauntEmailIdentity.DkimDNSTokenValue1
+
+  SesDkimRecord2:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${FlauntEmailIdentity.DkimDNSTokenName2}._domainkey.${RootDomainName}"
+      Type: CNAME
+      TTL: "1800"
+      ResourceRecords:
+        - !GetAtt FlauntEmailIdentity.DkimDNSTokenValue2
+
+  SesDkimRecord3:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub "${FlauntEmailIdentity.DkimDNSTokenName3}._domainkey.${RootDomainName}"
+      Type: CNAME
+      TTL: "1800"
+      ResourceRecords:
+        - !GetAtt FlauntEmailIdentity.DkimDNSTokenValue3
+
+Outputs:
+  ApiUrl:
+    Value: !Sub "https://${ApiDomainName}"
+  GraphqlUrl:
+    Value: !Sub "https://${GraphqlDomainName}/graphql"
+  UserPoolId:
+    Value: !Ref FlauntUserPool
+  UserPoolClientId:
+    Value: !Ref FlauntUserPoolClient
+  TableName:
+    Value: !Ref FlauntTable
+  EventBusName:
+    Value: !Ref FlauntEventBus
+  QueueUrl:
+    Value: !Ref FlauntQueue

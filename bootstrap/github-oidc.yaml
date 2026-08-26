@@ -1,0 +1,362 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  One-time bootstrap: GitHub Actions OIDC provider + one deploy role per
+  Flaunt repo. Deploy this manually, once, from a machine with valid AWS
+  credentials — never from CI (the CI roles it creates don't exist yet,
+  so CI can't be the one to create them):
+
+    aws cloudformation deploy \
+      --template-file bootstrap/github-oidc.yaml \
+      --stack-name flaunt-github-oidc \
+      --capabilities CAPABILITY_NAMED_IAM
+
+  Before deploying, check `aws iam list-open-id-connect-providers` — if a
+  token.actions.githubusercontent.com provider already exists in this
+  account (e.g. from unrelated prior work), remove the OIDCProvider
+  resource below and pass its ARN in as a parameter instead.
+
+Parameters:
+  GitHubOrg:
+    Type: String
+    Default: Admin-Mobil80
+    Description: GitHub org/user that owns the three Flaunt repos.
+
+Resources:
+  GitHubOidcProvider:
+    Type: AWS::IAM::OIDCProvider
+    Properties:
+      Url: https://token.actions.githubusercontent.com
+      ClientIdList:
+        - sts.amazonaws.com
+      ThumbprintList:
+        - 6938fd4d98bab03faadb97b34396831e3780aea1
+
+  # ---------------------------------------------------------------------
+  # Flaunt-PORTAL — owns the shared bucket
+  # ---------------------------------------------------------------------
+  PortalDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: flaunt-portal-deploy-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubOrg}/Flaunt-PORTAL:ref:refs/heads/main"
+      Policies:
+        - PolicyName: flaunt-portal-deploy-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CloudFormation
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:GetTemplate
+                  - cloudformation:ValidateTemplate
+                Resource: !Sub "arn:aws:cloudformation:us-east-1:${AWS::AccountId}:stack/flaunt-portal/*"
+              - Sid: BucketLifecycle
+                Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:PutBucketPolicy
+                  - s3:PutBucketOwnershipControls
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:PutEncryptionConfiguration
+                  - s3:PutBucketVersioning
+                  - s3:PutBucketTagging
+                Resource: "arn:aws:s3:::webapps.flaunt.network"
+              - Sid: ObjectSync
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: "arn:aws:s3:::webapps.flaunt.network/PORTAL/*"
+              - Sid: ListForSync
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: "arn:aws:s3:::webapps.flaunt.network"
+                Condition:
+                  StringLike:
+                    s3:prefix: "PORTAL/*"
+              - Sid: CloudFront
+                Effect: Allow
+                Action:
+                  - cloudfront:CreateOriginAccessControl
+                  - cloudfront:GetOriginAccessControl
+                  - cloudfront:CreateDistribution
+                  - cloudfront:GetDistribution
+                  - cloudfront:UpdateDistribution
+                  - cloudfront:TagResource
+                  - cloudfront:CreateInvalidation
+                Resource: "*"
+              - Sid: Acm
+                Effect: Allow
+                Action:
+                  - acm:RequestCertificate
+                  - acm:DescribeCertificate
+                  - acm:AddTagsToCertificate
+                  - acm:DeleteCertificate
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: us-east-1
+              - Sid: Route53
+                Effect: Allow
+                Action:
+                  - route53:ChangeResourceRecordSets
+                  - route53:ListResourceRecordSets
+                Resource: !Sub "arn:aws:route53:::hostedzone/*"
+              - Sid: Route53GetChange
+                Effect: Allow
+                Action: route53:GetChange
+                Resource: "*"
+
+  # ---------------------------------------------------------------------
+  # Flaunt-BMS — no bucket ownership, own distribution only
+  # ---------------------------------------------------------------------
+  BmsDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: flaunt-bms-deploy-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubOrg}/Flaunt-BMS:ref:refs/heads/main"
+      Policies:
+        - PolicyName: flaunt-bms-deploy-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CloudFormation
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:GetTemplate
+                  - cloudformation:ValidateTemplate
+                Resource: !Sub "arn:aws:cloudformation:us-east-1:${AWS::AccountId}:stack/flaunt-bms/*"
+              - Sid: ObjectSync
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                Resource: "arn:aws:s3:::webapps.flaunt.network/BMS/*"
+              - Sid: ListForSync
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: "arn:aws:s3:::webapps.flaunt.network"
+                Condition:
+                  StringLike:
+                    s3:prefix: "BMS/*"
+              - Sid: CloudFront
+                Effect: Allow
+                Action:
+                  - cloudfront:CreateOriginAccessControl
+                  - cloudfront:GetOriginAccessControl
+                  - cloudfront:CreateDistribution
+                  - cloudfront:GetDistribution
+                  - cloudfront:UpdateDistribution
+                  - cloudfront:TagResource
+                  - cloudfront:CreateInvalidation
+                Resource: "*"
+              - Sid: Acm
+                Effect: Allow
+                Action:
+                  - acm:RequestCertificate
+                  - acm:DescribeCertificate
+                  - acm:AddTagsToCertificate
+                  - acm:DeleteCertificate
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: us-east-1
+              - Sid: Route53
+                Effect: Allow
+                Action:
+                  - route53:ChangeResourceRecordSets
+                  - route53:ListResourceRecordSets
+                Resource: !Sub "arn:aws:route53:::hostedzone/*"
+              - Sid: Route53GetChange
+                Effect: Allow
+                Action: route53:GetChange
+                Resource: "*"
+
+  # ---------------------------------------------------------------------
+  # Flaunt-BACKEND — SAM app stack + its managed artifacts bucket
+  # ---------------------------------------------------------------------
+  BackendDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: flaunt-backend-deploy-role
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Federated: !Ref GitHubOidcProvider
+            Action: sts:AssumeRoleWithWebIdentity
+            Condition:
+              StringEquals:
+                token.actions.githubusercontent.com:aud: sts.amazonaws.com
+                token.actions.githubusercontent.com:sub: !Sub "repo:${GitHubOrg}/Flaunt-BACKEND:ref:refs/heads/main"
+      Policies:
+        - PolicyName: flaunt-backend-deploy-policy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: CloudFormation
+                Effect: Allow
+                Action:
+                  - cloudformation:CreateStack
+                  - cloudformation:UpdateStack
+                  - cloudformation:DescribeStacks
+                  - cloudformation:DescribeStackEvents
+                  - cloudformation:CreateChangeSet
+                  - cloudformation:DescribeChangeSet
+                  - cloudformation:ExecuteChangeSet
+                  - cloudformation:GetTemplate
+                  - cloudformation:ValidateTemplate
+                Resource:
+                  - !Sub "arn:aws:cloudformation:us-east-1:${AWS::AccountId}:stack/flaunt-backend/*"
+                  - !Sub "arn:aws:cloudformation:us-east-1:${AWS::AccountId}:stack/aws-sam-cli-managed-default*/*"
+              - Sid: SamArtifactsBucket
+                Effect: Allow
+                Action:
+                  - s3:CreateBucket
+                  - s3:PutBucketPolicy
+                  - s3:PutEncryptionConfiguration
+                  - s3:PutBucketPublicAccessBlock
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource:
+                  - "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-*"
+                  - "arn:aws:s3:::aws-sam-cli-managed-default-samclisourcebucket-*/*"
+              - Sid: Lambda
+                Effect: Allow
+                Action:
+                  - lambda:CreateFunction
+                  - lambda:GetFunction
+                  - lambda:UpdateFunctionCode
+                  - lambda:UpdateFunctionConfiguration
+                  - lambda:DeleteFunction
+                  - lambda:AddPermission
+                  - lambda:RemovePermission
+                  - lambda:TagResource
+                  - lambda:PublishVersion
+                Resource: !Sub "arn:aws:lambda:us-east-1:${AWS::AccountId}:function:flaunt-backend-*"
+              - Sid: ApiGatewayV2
+                Effect: Allow
+                Action: apigatewayv2:*
+                Resource: "*"
+              - Sid: AppSync
+                Effect: Allow
+                Action: appsync:*
+                Resource: "*"
+              - Sid: Cognito
+                Effect: Allow
+                Action: cognito-idp:*
+                Resource: "*"
+              - Sid: DynamoDb
+                Effect: Allow
+                Action: dynamodb:*
+                Resource: !Sub "arn:aws:dynamodb:us-east-1:${AWS::AccountId}:table/flaunt-table*"
+              - Sid: EventBridge
+                Effect: Allow
+                Action: events:*
+                Resource: !Sub "arn:aws:events:us-east-1:${AWS::AccountId}:event-bus/flaunt-event-bus"
+              - Sid: Sqs
+                Effect: Allow
+                Action: sqs:*
+                Resource: !Sub "arn:aws:sqs:us-east-1:${AWS::AccountId}:flaunt-queue*"
+              - Sid: Ses
+                Effect: Allow
+                Action:
+                  - ses:CreateEmailIdentity
+                  - ses:GetEmailIdentity
+                  - ses:DeleteEmailIdentity
+                  - ses:PutEmailIdentityDkimAttributes
+                  - ses:TagResource
+                Resource: "*"
+              - Sid: IamForLambdaExecRoles
+                Effect: Allow
+                Action:
+                  - iam:CreateRole
+                  - iam:GetRole
+                  - iam:DeleteRole
+                  - iam:PutRolePolicy
+                  - iam:AttachRolePolicy
+                  - iam:DetachRolePolicy
+                  - iam:DeleteRolePolicy
+                  - iam:TagRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/flaunt-backend-*"
+              - Sid: PassLambdaExecRoles
+                Effect: Allow
+                Action: iam:PassRole
+                Resource: !Sub "arn:aws:iam::${AWS::AccountId}:role/flaunt-backend-*"
+                Condition:
+                  StringEquals:
+                    iam:PassedToService: lambda.amazonaws.com
+              - Sid: Logs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:PutRetentionPolicy
+                  - logs:DeleteLogGroup
+                  - logs:TagResource
+                Resource: !Sub "arn:aws:logs:us-east-1:${AWS::AccountId}:log-group:/aws/lambda/flaunt-backend-*"
+              - Sid: Acm
+                Effect: Allow
+                Action:
+                  - acm:RequestCertificate
+                  - acm:DescribeCertificate
+                  - acm:AddTagsToCertificate
+                  - acm:DeleteCertificate
+                Resource: "*"
+                Condition:
+                  StringEquals:
+                    aws:RequestedRegion: us-east-1
+              - Sid: Route53
+                Effect: Allow
+                Action:
+                  - route53:ChangeResourceRecordSets
+                  - route53:ListResourceRecordSets
+                Resource: !Sub "arn:aws:route53:::hostedzone/*"
+              - Sid: Route53GetChange
+                Effect: Allow
+                Action: route53:GetChange
+                Resource: "*"
+
+Outputs:
+  PortalDeployRoleArn:
+    Value: !GetAtt PortalDeployRole.Arn
+  BmsDeployRoleArn:
+    Value: !GetAtt BmsDeployRole.Arn
+  BackendDeployRoleArn:
+    Value: !GetAtt BackendDeployRole.Arn

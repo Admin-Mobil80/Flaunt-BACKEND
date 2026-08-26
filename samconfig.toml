@@ -1,0 +1,13 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "flaunt-backend"
+region = "us-east-1"
+resolve_s3 = true
+capabilities = "CAPABILITY_NAMED_IAM"
+confirm_changeset = false
+fail_on_empty_changeset = false
+# HostedZoneId has no default — pass it explicitly, e.g.:
+#   sam deploy --parameter-overrides HostedZoneId=<ROUTE53_HOSTED_ZONE_ID>
+# or uncomment and fill in below for local `sam deploy` convenience:
+# parameter_overrides = "HostedZoneId=<ROUTE53_HOSTED_ZONE_ID>"
