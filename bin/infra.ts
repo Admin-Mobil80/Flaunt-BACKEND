@@ -5,6 +5,7 @@ import { CertStack } from '../lib/cert-stack';
 import { FrontendStack } from '../lib/frontend-stack';
 import { AuthStack } from '../lib/auth-stack';
 import { BmsAuthStack } from '../lib/bms-auth-stack';
+import { ApiStack } from '../lib/api-stack';
 import { CiDeployStack } from '../lib/ci-deploy-stack';
 import { EnvName } from '../lib/env-config';
 
@@ -87,6 +88,16 @@ const bmsAuthStack = new BmsAuthStack(app, 'FlauntBmsAuthStackProd', {
   rootAdminEmail: ROOT_ADMIN_EMAIL,
 });
 stacks.push(bmsAuthStack);
+
+stacks.push(new ApiStack(app, 'FlauntApiStackProd', {
+  env,
+  envName,
+  table: dataStack.table,
+  userPool: authStack.userPool,
+  bmsUserPool: bmsAuthStack.userPool,
+  rootAdminEmail: ROOT_ADMIN_EMAIL,
+}));
+
 
 const bmsStack = new FrontendStack(app, 'FlauntFrontendStackBmsProd', {
   env,

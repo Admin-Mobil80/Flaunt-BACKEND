@@ -50,6 +50,27 @@ const CLIENT_IDS = {
   bms: clientId('FlauntBmsAuthStackProd', 'BmsUserPoolClientId'),
 };
 
+function graphqlUrl() {
+  try {
+    const out = execFileSync('aws', [
+      'cloudformation', 'describe-stacks', '--stack-name', 'FlauntApiStackProd',
+      '--region', REGION, '--profile', PROFILE,
+      '--query', "Stacks[0].Outputs[?OutputKey=='GraphqlUrl'].OutputValue", '--output', 'text',
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (out && out !== 'None') return out;
+  } catch { /* not deployed yet */ }
+  console.warn('  ! FlauntApiStackProd not readable — building without an API endpoint.');
+  return '__GRAPHQL_URL__';
+}
+const GRAPHQL_URL = graphqlUrl();
+
+/**
+ * Identifies this build. The page polls version.json and, when the id differs
+ * from its own, offers a refresh — a long-open tab otherwise keeps running the
+ * previous release against a moved API.
+ */
+const BUILD_ID = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, 'flaunt-walkthrough.html');
 // This file lives at Flaunt-BACKEND/design/, so the sibling frontend repos are
@@ -57,6 +78,33 @@ const SRC = join(HERE, 'flaunt-walkthrough.html');
 const TARGETS = {
   portal: join(HERE, '..', '..', 'Flaunt-PORTAL', 'public'),
   bms: join(HERE, '..', '..', 'Flaunt-BMS', 'public'),
+};
+
+/**
+ * Tab identity, per app.
+ *
+ * The mark is drawn as plain rects rather than <text>: an SVG favicon's text
+ * renders inconsistently across browsers and cannot be relied on to pick up a
+ * serif at all, whereas geometry always renders. At 16px a letterform beats the
+ * token ring used in the UI, which turns to mush that small.
+ *
+ * The two apps take different grounds — oxblood for the member app, the BMS
+ * navy for the console — because whoever is running this has both tabs open and
+ * needs to tell them apart at a glance.
+ */
+function favicon(bg) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">`
+    + `<rect width="32" height="32" rx="7" fill="${bg}"/>`
+    + `<rect x="11" y="8" width="3.6" height="16" fill="#FBF9F5"/>`
+    + `<rect x="11" y="8" width="11" height="3.6" fill="#FBF9F5"/>`
+    + `<rect x="11" y="14.6" width="7.8" height="3.3" fill="#FBF9F5"/>`
+    + `</svg>`;
+  return `<link rel="icon" href="data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}">`;
+}
+
+const TAB = {
+  portal: { title: 'Flaunt', icon: favicon('#6E2B2B') },
+  bms: { title: 'Flaunt BMS', icon: favicon('#2B4A6E') },
 };
 
 const NOTICE = {
@@ -73,7 +121,13 @@ for (const app of ['portal', 'bms']) {
   out = out.replace("var APP = 'both';", `var APP = '${app}';`);
   if (out === before) throw new Error('APP selector not found in source');
 
-  out = out.replace('__AWS_REGION__', REGION).replace('__CLIENT_ID__', CLIENT_IDS[app]);
+  out = out
+    .replace('__AWS_REGION__', REGION)
+    .replace('__CLIENT_ID__', CLIENT_IDS[app])
+    .replace('__GRAPHQL_URL__', GRAPHQL_URL)
+    .replace('__BUILD_ID__', BUILD_ID)
+    .replace('__TITLE__', TAB[app].title)
+    .replace('__FAVICON__', TAB[app].icon);
 
   // Search engines must not index a service that cannot yet accept anyone.
   // The CloudFront response-headers policy sets X-Robots-Tag too; this is the
@@ -93,5 +147,6 @@ for (const app of ['portal', 'bms']) {
   const dir = TARGETS[app];
   await mkdir(dir, { recursive: true });
   await writeFile(join(dir, 'index.html'), out);
-  console.log(`${app}: ${dir}/index.html (${out.length} bytes)`);
+  await writeFile(join(dir, 'version.json'), JSON.stringify({ build: BUILD_ID }) + '\n');
+  console.log(`${app}: ${dir}/index.html (${out.length} bytes, build ${BUILD_ID})`);
 }

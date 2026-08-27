@@ -38,6 +38,7 @@ export const TXN_REASON = {
   REFUND_GATEKEEPER_DENIED: 'REFUND_GATEKEEPER_DENIED',
   PURCHASE: 'PURCHASE',
   ADMIN_OVERRIDE: 'ADMIN_OVERRIDE',
+  PRICING_CHANGED: 'PRICING_CHANGED',
 } as const;
 
 export type TxnReason = (typeof TXN_REASON)[keyof typeof TXN_REASON];
@@ -122,6 +123,9 @@ export const transaction = (
   PK: `USER#${userId}`,
   SK: `TXN#${isoTimestamp}#${randomUUID()}`,
 });
+
+/** Platform settings BMS can change at runtime. One item, one row. */
+export const pricingConfig = (): TableKey => ({ PK: 'CONFIG#PRICING', SK: 'METADATA' });
 
 export const statsGlobal = (day: string): TableKey => ({ PK: 'STATS#GLOBAL', SK: `DAY#${day}` });
 

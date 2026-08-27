@@ -183,3 +183,76 @@ describe('organisation (optional, free text by decision)', () => {
     expect(validateOrganisation(undefined)).toBeUndefined();
   });
 });
+
+import { priceForCountry, formatMinor, DEFAULT_TOKENS_PER_BUNDLE,
+  ALLOWED_BUNDLE_SIZES, coerceBundleSize, isAllowedBundleSize } from '../functions/shared/pricing';
+
+describe('token pricing (§3.3) — the UI and the Razorpay order must agree', () => {
+  test('India: ₹400 + 18% GST = ₹472.00 for 25 tokens', () => {
+    const p = priceForCountry('IN');
+    expect(p).toMatchObject({ currency: 'INR', tokens: 25, baseMinor: 40000, taxMinor: 7200, totalMinor: 47200 });
+    expect(formatMinor(p.totalMinor, p.symbol)).toBe('₹472.00');
+    expect(formatMinor(p.taxMinor, p.symbol)).toBe('₹72.00');
+  });
+
+  test('outside India: flat $5.00, no tax line', () => {
+    const p = priceForCountry('SG');
+    expect(p).toMatchObject({ currency: 'USD', baseMinor: 500, taxMinor: 0, totalMinor: 500, taxLabel: null });
+    expect(formatMinor(p.totalMinor, p.symbol)).toBe('$5.00');
+  });
+
+  test('country is matched case- and whitespace-insensitively', () => {
+    expect(priceForCountry(' in ').totalMinor).toBe(47200);
+    expect(priceForCountry('In').currency).toBe('INR');
+  });
+
+  // A missing country must not silently become the cheaper price.
+  test('unknown or missing country falls back to the international price', () => {
+    expect(priceForCountry('').currency).toBe('USD');
+    expect(priceForCountry(undefined as any).currency).toBe('USD');
+  });
+
+  // Amounts stay in minor units precisely so this never becomes 472.00000000001.
+  test('all amounts are integers in minor units', () => {
+    for (const cc of ['IN', 'US', 'GB']) {
+      const p = priceForCountry(cc);
+      for (const v of [p.baseMinor, p.taxMinor, p.totalMinor]) expect(Number.isInteger(v)).toBe(true);
+    }
+  });
+
+  test('bundle defaults to 25 when nothing is configured', () => {
+    expect(DEFAULT_TOKENS_PER_BUNDLE).toBe(25);
+    expect(priceForCountry('IN').tokens).toBe(25);
+    expect(priceForCountry('US').tokens).toBe(25);
+  });
+});
+
+describe('configurable bundle size (set from BMS)', () => {
+  test('changes the tokens but never the amount charged or the GST', () => {
+    for (const n of ALLOWED_BUNDLE_SIZES) {
+      const inr = priceForCountry('IN', n);
+      expect(inr.tokens).toBe(n);
+      expect(inr.totalMinor).toBe(47200);
+      expect(inr.taxMinor).toBe(7200);
+      const usd = priceForCountry('US', n);
+      expect(usd.tokens).toBe(n);
+      expect(usd.totalMinor).toBe(500);
+    }
+  });
+
+  test('accepts only 25, 50, 75, 100', () => {
+    expect(ALLOWED_BUNDLE_SIZES).toEqual([25, 50, 75, 100]);
+    for (const n of [25, 50, 75, 100]) expect(isAllowedBundleSize(n)).toBe(true);
+    for (const n of [0, 1, 24, 26, 99, 2500, -25]) expect(isAllowedBundleSize(n)).toBe(false);
+  });
+
+  // A typo'd or corrupted stored value must not take pricing down, and must not
+  // silently ship 2500 tokens for the price of 25.
+  test('a bad stored value falls back to the default rather than being honoured', () => {
+    expect(coerceBundleSize(2500)).toBe(25);
+    expect(coerceBundleSize('50')).toBe(25);
+    expect(coerceBundleSize(null)).toBe(25);
+    expect(coerceBundleSize(undefined)).toBe(25);
+    expect(priceForCountry('IN', 9999).tokens).toBe(25);
+  });
+});

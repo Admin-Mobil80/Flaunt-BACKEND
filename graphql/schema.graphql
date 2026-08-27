@@ -1,3 +1,118 @@
+# Flaunt API. Two Cognito pools authorize against this one endpoint: members
+# (flaunt.network) and staff (bms.flaunt.network). Every admin field checks the
+# caller's pool at the resolver — being authenticated is not being an admin.
+
+type Profile {
+  userId: ID!
+  name: String!
+  designation: String
+  organisation: String
+  location: String
+  bio: String
+  country: String!
+  # Masked to riy**@mo******.com for 2nd degree, absent beyond it (§3.2).
+  primaryEmail: String
+  secondaryEmail: String
+  degree: Int
+}
+
+type Me {
+  userId: ID!
+  name: String!
+  email: String!
+  designation: String
+  organisation: String
+  location: String
+  bio: String
+  country: String!
+  tokenBalance: Int!
+  createdAt: String!
+  connectionCount: Int!
+}
+
+type Connection {
+  userId: ID!
+  name: String!
+  designation: String
+  organisation: String
+  location: String
+  connectedAt: String!
+}
+
+type Invitation {
+  inviteId: ID!
+  recipientEmail: String!
+  status: String!
+  type: String!
+  createdAt: String!
+  expiresAt: Int
+  daysLeft: Int
+  tokenOutcome: String!
+}
+
+# Amounts are minor units — paise or cents — because that is what Razorpay
+# takes and what avoids float drift.
+type BundlePrice {
+  currency: String!
+  symbol: String!
+  tokens: Int!
+  baseMinor: Int!
+  taxMinor: Int!
+  totalMinor: Int!
+  taxLabel: String
+  baseDisplay: String!
+  taxDisplay: String
+  totalDisplay: String!
+}
+
+type AdminUser {
+  userId: ID!
+  name: String!
+  email: String!
+  country: String!
+  tokenBalance: Int!
+  connectionCount: Int!
+  createdAt: String!
+}
+
+type PricingConfig {
+  tokensPerBundle: Int!
+  allowedSizes: [Int!]!
+  updatedAt: String
+  updatedBy: String
+}
+
+type AdminStats {
+  totalUsers: Int!
+  usersIndia: Int!
+  usersInternational: Int!
+  tokensOutstanding: Int!
+}
+
 type Query {
-  health: String
+  me: Me!
+  myConnections: [Connection!]!
+  myInvitations: [Invitation!]!
+  tokenPrice: BundlePrice!
+  searchPeople(query: String!): [Profile!]!
+
+  adminUsers(limit: Int): [AdminUser!]!
+  adminStats: AdminStats!
+  adminInvitations(status: String): [Invitation!]!
+  adminPricingConfig: PricingConfig!
+}
+
+type Mutation {
+  # Debits one token and creates the invitation in a single transaction, so a
+  # token can never be spent without the invite that justifies it.
+  sendInvitation(email: String!): Invitation!
+  adminAdjustTokens(userId: ID!, delta: Int!, reason: String): AdminUser!
+  # How many tokens a bundle contains. The amount charged does not change —
+  # only what it buys. Restricted to 25, 50, 75 or 100.
+  adminSetTokensPerBundle(tokens: Int!): PricingConfig!
+}
+
+schema {
+  query: Query
+  mutation: Mutation
 }

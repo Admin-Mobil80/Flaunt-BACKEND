@@ -1,6 +1,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Flaunt Walkthrough</title>
+__FAVICON__
+<title>__TITLE__</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
@@ -165,7 +166,24 @@ const CHEV = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 
 /** Title, then employer when there is one. No trailing separator if there is not. */
-const roleLine = (p) => p.org ? `${esc(p.designation)} · ${esc(p.org)}` : esc(p.designation);
+const roleLine = (p) => p.organisation ? `${esc(p.designation || '')} · ${esc(p.organisation)}`
+  : esc(p.designation || '');
+
+/** Monogram from a real name, however many parts it has. */
+function initialsOf(name) {
+  const parts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '·';
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : '')).toUpperCase();
+}
+
+function emptyState(title, body, action) {
+  return `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:38px 32px;
+      display:flex;flex-direction:column;gap:12px;align-items:flex-start;">
+    <span class="serif" style="font-size:21px;">${esc(title)}</span>
+    <p style="margin:0;font-size:13.5px;color:var(--ink-soft);line-height:1.6;max-width:52ch;text-wrap:pretty;">${esc(body)}</p>
+    ${action || ''}
+  </div>`;
+}
 
 const PEOPLE = {
   priya:{id:'priya',ini:'PN',name:'Priya Nair',designation:'Design director',org:'Ather Energy',location:'Bengaluru, India',
@@ -193,62 +211,7 @@ const PEOPLE = {
     degree:2,via:'priya',email:'riy**@mo******.com',email2:null,
     bio:'I founded Mobil80 in 2019. We build operational software for logistics companies across Kerala and the Gulf — dispatch, fleet maintenance, driver payroll — the systems that have to keep running whether or not anyone is watching a dashboard. I spent the decade before that as an engineer at two telcos, which is where I learned what uptime actually costs.'}
 };
-const NETWORK = ['priya','daniel','meera','tomas','sana','weilin','rahul'];
 
-const TONE = {
-  spent:{bd:'#CFC6B6',bg:'#F4F0E8',fg:'#6B6459'},
-  open :{bd:'var(--warn-line)',bg:'var(--warn-wash)',fg:'var(--warn)'},
-  back :{bd:'var(--good-line)',bg:'var(--good-wash)',fg:'var(--good)'}
-};
-
-const SEED_INV = [
-  {name:'Rahul Deshpande',email:'rahul.deshpande@razorpay.com',key:'accepted',status:'Accepted',
-   detail:'Connected 21 April 2026',sent:'18 Apr 2026',token:'1 token spent',refunded:false,tone:'spent'},
-  {name:'Nikhil Varma',email:'nikhil.varma@zerodha.com',key:'pending',status:'Pending',
-   detail:'Not opened yet',sent:'24 Aug 2026',token:'4 days left',refunded:false,tone:'open'},
-  {name:'Lucia Moretti',email:'lucia.moretti@bendingspoons.com',key:'accepted',status:'Accepted',
-   detail:'Connected 04 August 2026',sent:'02 Aug 2026',token:'1 token spent',refunded:false,tone:'spent'},
-  {name:'James Whitfield',email:'j.whitfield@kearney.com',key:'declined',status:'Declined',
-   detail:'Declined 14 August 2026',sent:'12 Aug 2026',token:'1 token returned',refunded:true,tone:'back'},
-  {name:'Anaya Sinha',email:'anaya.sinha@swiggy.in',key:'expired',status:'Expired',
-   detail:'No response in 7 days',sent:'06 Aug 2026',token:'1 token returned',refunded:true,tone:'back'}
-];
-
-const BMS_USERS = [
-  {name:'Riyad Rasheed',email:'riyad@mobil80.com',cc:'IN',tok:34,conn:41,age:'89d'},
-  {name:'Rahul Deshpande',email:'rahul.deshpande@razorpay.com',cc:'IN',tok:9,conn:26,age:'128d'},
-  {name:'Priya Nair',email:'priya.nair@atherenergy.com',cc:'IN',tok:6,conn:22,age:'63d'},
-  {name:'Sana Qureshi',email:'sana.qureshi@trilegal.com',cc:'IN',tok:12,conn:19,age:'71d'},
-  {name:'Wei Lin Tan',email:'weilin.tan@gic.com.sg',cc:'SG',tok:8,conn:17,age:'55d'},
-  {name:'Meera Krishnan',email:'m.krishnan@narayanahealth.org',cc:'IN',tok:5,conn:14,age:'34d'},
-  {name:'Daniel Osei',email:'daniel.osei@paystack.com',cc:'GH',tok:3,conn:11,age:'27d'},
-  {name:'Arjun Mehta',email:'arjun.mehta@setu.co',cc:'IN',tok:10,conn:7,age:'41d'},
-  {name:'Tomás Ferreira',email:'tomas@lote9.pt',cc:'PT',tok:25,conn:4,age:'12d'},
-  {name:'Aisha Bello',email:'a.bello@twigafoods.com',cc:'NG',tok:1,conn:3,age:'9d'}
-];
-
-const BMS_INV = [
-  {id:'inv_8Kd2mRq7',sender:'Arjun Mehta',to:'nikhil.varma@zerodha.com',type:'DIRECT',state:'PENDING',sent:'24 Aug',exp:'in 4d',tok:'held'},
-  {id:'inv_7Wp4nBv1',sender:'Arjun Mehta',to:'riyad@mobil80.com',type:'INTRO',state:'PENDING',sent:'26 Aug',exp:'in 6d',tok:'held'},
-  {id:'inv_6Ry9tKc3',sender:'Priya Nair',to:'shreya.iyer@postman.com',type:'DIRECT',state:'ACCEPTED',sent:'21 Aug',exp:'—',tok:'spent'},
-  {id:'inv_6Lm3xHd8',sender:'Wei Lin Tan',to:'marcus.chen@temasek.com.sg',type:'DIRECT',state:'ACCEPTED',sent:'19 Aug',exp:'—',tok:'spent'},
-  {id:'inv_5Qz7bNf2',sender:'Arjun Mehta',to:'j.whitfield@kearney.com',type:'DIRECT',state:'REJECTED',sent:'12 Aug',exp:'—',tok:'refunded'},
-  {id:'inv_5Ht1cJp6',sender:'Daniel Osei',to:'kwame.asante@flutterwave.com',type:'DIRECT',state:'REJECTED',sent:'10 Aug',exp:'—',tok:'refunded'},
-  {id:'inv_4Nv6dLs9',sender:'Arjun Mehta',to:'anaya.sinha@swiggy.in',type:'DIRECT',state:'EXPIRED',sent:'06 Aug',exp:'13 Aug',tok:'refunded'},
-  {id:'inv_4Bg8fMt4',sender:'Sana Qureshi',to:'v.raghavan@azb.com',type:'DIRECT',state:'EXPIRED',sent:'02 Aug',exp:'09 Aug',tok:'refunded'},
-  {id:'inv_3Ck5gPw7',sender:'Rahul Deshpande',to:'lucia.moretti@bendingspoons.com',type:'INTRO',state:'ACCEPTED',sent:'02 Aug',exp:'—',tok:'spent'}
-];
-
-const HOOKS = [
-  {t:'09:14:22',ev:'payment.captured',order:'order_QK7mR2xVn8LpTd',amt:'₹472.00',tax:'GST ₹72.00',sig:'PASS',out:'Credited 25 tokens',kind:'ok'},
-  {t:'08:51:07',ev:'payment.captured',order:'order_QK7f9WdA3sYbUe',amt:'$5.00',tax:'—',sig:'PASS',out:'Credited 25 tokens',kind:'ok'},
-  {t:'08:22:41',ev:'payment.failed',order:'order_QK6xB1nLm4TgQr',amt:'₹472.00',tax:'—',sig:'PASS',out:'No credit — card declined at issuer',kind:'warn'},
-  {t:'07:58:19',ev:'payment.captured',order:'order_QK6t3ZpKc7HvNs',amt:'₹472.00',tax:'GST ₹72.00',sig:'FAIL',out:'Rejected — HMAC mismatch, ledger untouched',kind:'fail'},
-  {t:'07:31:55',ev:'order.paid',order:'order_QK5nY8jRt2WqMx',amt:'$5.00',tax:'—',sig:'PASS',out:'Credited 25 tokens',kind:'ok'},
-  {t:'06:47:12',ev:'payment.captured',order:'order_QK5b2QvEr9TmZa',amt:'₹472.00',tax:'GST ₹72.00',sig:'PASS',out:'Credited 25 tokens',kind:'ok'},
-  {t:'06:12:38',ev:'payment.captured',order:'order_QK4h7XsDf3NkLp',amt:'₹472.00',tax:'GST ₹72.00',sig:'PASS',out:'Duplicate delivery — ignored',kind:'warn'},
-  {t:'05:39:04',ev:'order.paid',order:'order_QK4c1TgYu6BvMn',amt:'$5.00',tax:'—',sig:'PASS',out:'Credited 25 tokens',kind:'ok'}
-];
 
 const SEED_BIO = `I lead product for the payments platform at Setu, where we build the rails that let smaller Indian fintechs move money without first assembling a compliance team. My team owns onboarding, the reconciliation engine and the developer experience around both. Most of what I do day to day is decide what we are not going to build this quarter.
 
@@ -262,13 +225,19 @@ I am in Bengaluru, and happy to be useful to people building in this space, part
 
 var APP = 'both';   // build-time selector: 'portal' | 'bms' | 'both'
 var AUTH = { region: '__AWS_REGION__', clientId: '__CLIENT_ID__' };
+var API_URL = '__GRAPHQL_URL__';
+var BUILD_ID = '__BUILD_ID__';
+var API_READY = API_URL.indexOf('__') !== 0;
 var AUTH_READY = AUTH.clientId.indexOf('__') !== 0;
 var SESSION_KEY = 'flaunt.' + APP;
 var S = {};   // var, not let: inline on* handlers resolve through window
 function reset() {
   S = { balance:10, bio:SEED_BIO, invFilter:'all', bmsFilter:'ALL', modal:null, toast:null,
-        invites:SEED_INV.map((r)=>({...r})), bmsTok:Object.fromEntries(BMS_USERS.map((u)=>[u.email,u.tok])),
+        invites:[],
         connected:{}, introAsked:false,
+        me:null, connections:[], invites:[], price:null,
+        loading:false, dataError:null, landed:false, newVersion:false, sending:false,
+        stats:null, users:[], adminInvites:[], pricing:null,
         auth:{ step: APP === 'portal' ? 'choose' : 'email', email: APP === 'bms' ? 'riyad@mobil80.com' : '', busy:false, error:null, session:null } };
 }
 reset();
@@ -307,10 +276,10 @@ function topbar(active) {
     <div style="display:flex;align-items:center;gap:18px;">
       <button class="purse" onclick="go('#/tokens')" title="Buy more tokens">
         <span style="color:var(--accent);display:flex;">${COIN}</span>
-        <span class="mono" style="font-size:13px;font-weight:500;">${S.balance}</span>
+        <span class="mono" style="font-size:13px;font-weight:500;">${S.me ? S.me.tokenBalance : '—'}</span>
         <span class="lbl">tokens</span>
       </button>
-      <span class="avatar" style="width:34px;height:34px;font-size:14px;">AM</span>
+      <span class="avatar" style="width:34px;height:34px;font-size:14px;">${S.me ? initialsOf(S.me.name) : '·'}</span>
       ${APP === 'portal' ? `<button onclick="signOut()" title="${esc((session() && session().email) || '')}"
         style="background:none;border:1px solid var(--rule-2);color:var(--ink-soft);font-size:11.5px;padding:4px 10px;">Sign out</button>` : ''}
     </div>
@@ -428,17 +397,15 @@ function vWelcome() {
 }
 
 function vNetwork() {
-  const rows = NETWORK.map((id) => {
-    const p = PEOPLE[id];
-    return `<button class="row-link" onclick="go('#/p/${p.id}')">
-      <span class="avatar" style="width:38px;height:38px;font-size:14px;">${p.ini}</span>
+  const rows = S.connections.map((p) => {
+    return `<button class="row-link" onclick="go('#/p/${p.userId}')">
+      <span class="avatar" style="width:38px;height:38px;font-size:14px;">${initialsOf(p.name)}</span>
       <span style="display:flex;flex-direction:column;gap:1px;flex-grow:1;min-width:0;">
         <span class="serif" style="font-size:17.5px;">${esc(p.name)}</span>
         <span style="font-size:12.5px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${roleLine(p)}</span>
       </span>
       <span style="display:none;flex-direction:column;align-items:flex-end;gap:1px;" class="meta">
         <span style="font-size:12.5px;color:var(--ink-soft);">${esc(p.location || '')}</span>
-        <span class="mono" style="font-size:11.5px;color:var(--faint);">${esc(p.since)}</span>
       </span>
       <span style="color:var(--ghost);display:flex;">${CHEV}</span>
     </button>`;
@@ -446,12 +413,12 @@ function vNetwork() {
   return topbar('network') + `<div class="wrap"><div class="col">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <h1 class="big">Your network</h1>
-      <span style="font-size:13px;color:var(--ink-soft);">7 direct · 63 within reach</span>
+      <span style="font-size:13px;color:var(--ink-soft);">${S.connections.length} direct</span>
     </div>
-    <button onclick="go('#/p/riyad')" style="display:flex;align-items:center;gap:11px;border:1px solid var(--rule-2);background:var(--raised);padding:11px 14px;width:100%;text-align:left;">
-      <span style="color:var(--faint);display:flex;">${SEARCH}</span>
-      <span style="font-size:13.5px;color:var(--faint);">Search people by name — try “Riyad”</span>
-    </button>
+    <div style="display:flex;align-items:center;gap:11px;border:1px solid var(--rule);background:var(--sunk);padding:11px 14px;">
+      <span style="color:var(--ghost);display:flex;">${SEARCH}</span>
+      <span style="font-size:13.5px;color:var(--faint);">Search is not available yet</span>
+    </div>
     <div style="display:flex;flex-direction:column;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:11px;border-bottom:1px solid var(--rule-2);">
         <span class="lbl">Direct connections</span>
@@ -538,48 +505,76 @@ function vProfile(id) {
   </div></div>`;
 }
 
+
+function vFirstRun() {
+  const bal = S.me ? S.me.tokenBalance : 0;
+  const coins = Array.from({ length: Math.min(bal, 10) }, () =>
+    `<span style="color:var(--accent);display:flex;"><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.2"/></svg></span>`).join('');
+  return topbar('network') + `<div class="wrap"><div class="col" style="max-width:640px;">
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <h1 class="serif" style="margin:0;font-size:clamp(28px,5vw,38px);font-weight:400;letter-spacing:-.02em;">Welcome, ${esc((S.me && S.me.name || '').split(' ')[0])}.</h1>
+      <p style="margin:0;font-size:15px;color:var(--ink-soft);line-height:1.68;max-width:52ch;text-wrap:pretty;">Your network is empty, which is how everyone starts. There is no feed to scroll and nobody is suggested to you — the only way in is an invitation you send.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;border-top:1px solid var(--rule-2);border-bottom:1px solid var(--rule-2);padding:26px 0;">
+      <div style="display:flex;gap:9px;flex-wrap:wrap;">${coins}</div>
+      <span class="lbl" style="color:var(--accent);">${bal} token${bal === 1 ? '' : 's'} to spend</span>
+      <p style="margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.6;max-width:52ch;">Each invitation costs one. If it is declined, or goes unanswered for seven days, the token comes back to you.</p>
+    </div>
+    <button class="btn" style="align-self:flex-start;" onclick="openInvite()">
+      <span style="display:flex;">${COIN}</span>Send your first invitation</button>
+  </div></div>`;
+}
+
 function vInvitations() {
-  const TABS = [['all','All'],['pending','Open'],['accepted','Accepted'],['declined','Declined'],['expired','Expired']];
+  const TABS = [['all','All'],['PENDING','Open'],['ACCEPTED','Accepted'],['REJECTED','Declined'],['EXPIRED','Expired']];
   const tabs = TABS.map(([id,label]) => {
-    const n = id==='all' ? S.invites.length : S.invites.filter((r)=>r.key===id).length;
+    const n = id==='all' ? S.invites.length : S.invites.filter((r)=>r.status===id).length;
     const on = S.invFilter===id;
     return `<button onclick="S.invFilter='${id}';render();" aria-current="${on}"
       style="background:none;border:none;border-bottom:1.5px solid ${on?'var(--accent)':'transparent'};color:${on?'var(--ink)':'var(--ink-soft)'};font-weight:${on?500:400};font-size:13px;padding:0 0 10px;display:flex;align-items:center;gap:7px;">
       ${label}<span class="mono" style="font-size:11px;color:var(--faint);">${n}</span></button>`;
   }).join('');
-  const shown = S.invites.filter((r)=>S.invFilter==='all'||r.key===S.invFilter);
-  const refunds = S.invites.filter((r)=>r.refunded).length;
+  const shown = S.invites.filter((r)=>S.invFilter==='all'||r.status===S.invFilter);
+  const refunded = S.invites.filter((r)=>r.tokenOutcome.indexOf('returned')>-1).length;
+
+  const tone = (st) => st==='ACCEPTED' ? {bd:'#CFC6B6',bg:'#F4F0E8',fg:'#6B6459'}
+    : (st==='REJECTED'||st==='EXPIRED'||st==='GATEKEEPER_DENIED')
+      ? {bd:'var(--good-line)',bg:'var(--good-wash)',fg:'var(--good)'}
+      : {bd:'var(--warn-line)',bg:'var(--warn-wash)',fg:'var(--warn)'};
+
   const rows = shown.map((r) => {
-    const t = TONE[r.tone];
+    const t = tone(r.status);
+    const back = r.tokenOutcome.indexOf('returned') > -1;
     return `<div style="display:flex;align-items:center;gap:18px;padding:18px 0;border-bottom:1px solid var(--rule);flex-wrap:wrap;">
-      <div style="display:flex;flex-direction:column;gap:2px;width:min(268px,100%);flex-shrink:0;">
-        <span class="serif" style="font-size:17px;">${esc(r.name)}</span>
-        <span class="mono" style="font-size:11.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;">${esc(r.email)}</span>
+      <div style="display:flex;flex-direction:column;gap:2px;width:min(300px,100%);flex-shrink:0;">
+        <span class="mono" style="font-size:13.5px;">${esc(r.recipientEmail)}</span>
+        <span class="mono" style="font-size:11.5px;color:var(--faint);">sent ${esc(String(r.createdAt).slice(0,10))}</span>
       </div>
       <div style="width:132px;flex-shrink:0;">
         <span class="chip" style="border-color:${t.bd};background:${t.bg};"><span class="dot" style="background:${t.fg};"></span><span class="lbl" style="color:${t.fg};">${esc(r.status)}</span></span>
       </div>
-      <div style="display:flex;flex-direction:column;gap:2px;flex-grow:1;min-width:140px;">
-        <span style="font-size:12.5px;color:var(--ink-2);">${esc(r.detail)}</span>
-        <span class="mono" style="font-size:11.5px;color:var(--faint);">sent ${esc(r.sent)}</span>
+      <div style="flex-grow:1;min-width:120px;font-size:12.5px;color:var(--ink-2);">
+        ${r.daysLeft !== null && r.daysLeft !== undefined ? esc(r.daysLeft + ' day' + (r.daysLeft===1?'':'s') + ' left') : ''}
       </div>
-      <div style="display:flex;align-items:center;gap:7px;width:148px;flex-shrink:0;justify-content:flex-end;">
-        ${r.refunded?`<span style="color:var(--good);display:flex;">${RETURN}</span>`:''}
-        <span style="font-size:12.5px;color:${r.refunded?'var(--good)':'var(--ink-soft)'};font-weight:${r.refunded?500:400};">${esc(r.token)}</span>
+      <div style="display:flex;align-items:center;gap:7px;width:150px;flex-shrink:0;justify-content:flex-end;">
+        ${back?`<span style="color:var(--good);display:flex;">${RETURN}</span>`:''}
+        <span style="font-size:12.5px;color:${back?'var(--good)':'var(--ink-soft)'};font-weight:${back?500:400};">${esc(r.tokenOutcome)}</span>
       </div>
     </div>`;
-  }).join('') || `<p style="margin:24px 0;font-size:13.5px;color:var(--faint);">Nothing in this state.</p>`;
+  }).join('');
 
   return topbar('invitations') + `<div class="wrap"><div class="col wide" style="gap:26px;">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <h1 class="big">Invitations</h1>
-      <div style="display:flex;align-items:center;gap:8px;color:var(--good);">
-        ${RETURN}<span style="font-size:13px;">${refunds} token${refunds===1?'':'s'} returned to you, automatically</span>
-      </div>
+      ${refunded ? `<div style="display:flex;align-items:center;gap:8px;color:var(--good);">
+        ${RETURN}<span style="font-size:13px;">${refunded} token${refunded===1?'':'s'} returned to you</span></div>` : ''}
     </div>
-    <div style="display:flex;gap:24px;border-bottom:1px solid var(--rule-2);flex-wrap:wrap;">${tabs}</div>
-    <div style="display:flex;flex-direction:column;">${rows}</div>
-    <button class="btn" style="align-self:flex-start;" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>
+    ${S.invites.length ? `<div style="display:flex;gap:24px;border-bottom:1px solid var(--rule-2);flex-wrap:wrap;">${tabs}</div>
+    <div style="display:flex;flex-direction:column;">${rows || `<p style="margin:24px 0;font-size:13.5px;color:var(--faint);">Nothing in this state.</p>`}</div>`
+    : emptyState('No invitations yet',
+        'Every connection on Flaunt starts with one. Sending costs a token, and you get it back if it is declined or goes unanswered for seven days.',
+        `<button class="btn" onclick="openInvite()">Send an invitation</button>`)}
+    ${S.invites.length ? `<button class="btn" style="align-self:flex-start;" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>` : ''}
   </div></div>`;
 }
 
@@ -636,53 +631,74 @@ function vGatekeeper() {
 }
 
 function vTokens() {
-  return topbar('') + `<div class="wrap"><div class="col wide" style="gap:30px;">
+  const p = S.price;
+  if (!p) return topbar('') + `<div class="wrap"><div class="col"><p style="font-size:13.5px;color:var(--ink-soft);">Loading pricing…</p></div></div>`;
+  const country = S.me ? S.me.country : '';
+  return topbar('') + `<div class="wrap"><div class="col" style="max-width:560px;gap:30px;">
     ${backlink('Network','#/network')}
     <div style="display:flex;flex-direction:column;gap:9px;">
       <h1 class="big">Buy tokens</h1>
-      <p style="margin:0;font-size:14px;color:var(--ink-soft);max-width:58ch;text-wrap:pretty;">Twenty-five tokens per bundle. What you pay is set by the country on your account — yours is India.</p>
+      <p style="margin:0;font-size:14px;color:var(--ink-soft);max-width:52ch;text-wrap:pretty;">Priced for your country, ${esc(country)}. Set once at sign-up — contact support to change it.</p>
     </div>
-    <div class="grid2" style="align-items:start;">
-      <div style="border:1.5px solid var(--accent);background:var(--raised);display:flex;flex-direction:column;">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 24px;border-bottom:1px solid var(--rule);background:var(--accent-wash);">
-          <span class="lbl" style="color:var(--accent);">Your price · India</span>
-          <span class="mono" style="font-size:11.5px;color:var(--accent);">INR</span>
-        </div>
-        <div style="padding:26px 24px;display:flex;flex-direction:column;gap:22px;">
-          <div style="display:flex;align-items:baseline;gap:10px;">
-            <span class="serif" style="font-size:38px;letter-spacing:-.02em;">25</span><span style="font-size:14px;color:var(--ink-soft);">tokens</span>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:11px;">
-            <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;color:var(--ink-2);">25 tokens</span><span class="mono" style="font-size:13.5px;">₹400.00</span></div>
-            <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;color:var(--ink-2);">GST at 18%</span><span class="mono" style="font-size:13.5px;">₹72.00</span></div>
-            <div style="height:1px;background:var(--rule-2);margin:3px 0;"></div>
-            <div style="display:flex;justify-content:space-between;"><span style="font-size:14px;font-weight:500;">Total</span><span class="mono" style="font-size:19px;font-weight:500;">₹472.00</span></div>
-          </div>
-          <button class="btn" style="width:100%;" onclick="buyTokens()">Pay ₹472.00</button>
-          <span style="font-size:11.5px;color:var(--faint);text-align:center;">Razorpay · GST invoice emailed on payment</span>
-        </div>
+    <div style="border:1.5px solid var(--accent);background:var(--raised);display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 24px;border-bottom:1px solid var(--rule);background:var(--accent-wash);">
+        <span class="lbl" style="color:var(--accent);">One bundle</span>
+        <span class="mono" style="font-size:11.5px;color:var(--accent);">${esc(p.currency)}</span>
       </div>
-      <div style="border:1px solid var(--rule-2);background:#FAF7F1;display:flex;flex-direction:column;">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 24px;border-bottom:1px solid var(--rule);">
-          <span class="lbl">Outside India</span><span class="mono" style="font-size:11.5px;color:var(--faint);">USD</span>
+      <div style="padding:26px 24px;display:flex;flex-direction:column;gap:22px;">
+        <div style="display:flex;align-items:baseline;gap:10px;">
+          <span class="serif" style="font-size:38px;letter-spacing:-.02em;">${p.tokens}</span>
+          <span style="font-size:14px;color:var(--ink-soft);">tokens</span>
         </div>
-        <div style="padding:26px 24px;display:flex;flex-direction:column;gap:22px;">
-          <div style="display:flex;align-items:baseline;gap:10px;">
-            <span class="serif" style="font-size:38px;letter-spacing:-.02em;color:var(--ink-soft);">25</span><span style="font-size:14px;color:var(--faint);">tokens</span>
-          </div>
-          <div style="display:flex;flex-direction:column;gap:11px;">
-            <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;color:var(--ink-soft);">25 tokens</span><span class="mono" style="font-size:13.5px;color:var(--ink-soft);">$5.00</span></div>
-            <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;color:var(--faint);">No regional tax</span><span class="mono" style="font-size:13.5px;color:var(--faint);">—</span></div>
-            <div style="height:1px;background:var(--rule);margin:3px 0;"></div>
-            <div style="display:flex;justify-content:space-between;"><span style="font-size:14px;font-weight:500;color:var(--ink-soft);">Total</span><span class="mono" style="font-size:19px;font-weight:500;color:var(--ink-soft);">$5.00</span></div>
-          </div>
-          <button class="btn" disabled style="width:100%;">Not your region</button>
-          <span style="font-size:11.5px;color:var(--faint);text-align:center;">Shown so you can see the difference</span>
+        <div style="display:flex;flex-direction:column;gap:11px;">
+          <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;color:var(--ink-2);">${p.tokens} tokens</span><span class="mono" style="font-size:13.5px;">${esc(p.baseDisplay)}</span></div>
+          ${p.taxLabel ? `<div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;color:var(--ink-2);">${esc(p.taxLabel)}</span><span class="mono" style="font-size:13.5px;">${esc(p.taxDisplay)}</span></div>` : ''}
+          <div style="height:1px;background:var(--rule-2);margin:3px 0;"></div>
+          <div style="display:flex;justify-content:space-between;"><span style="font-size:14px;font-weight:500;">Total</span><span class="mono" style="font-size:19px;font-weight:500;">${esc(p.totalDisplay)}</span></div>
         </div>
+        <button class="btn" style="width:100%;" onclick="toast('Payments are not connected yet.')">Pay ${esc(p.totalDisplay)}</button>
+        <span style="font-size:11.5px;color:var(--faint);text-align:center;">Razorpay is not connected yet — this does not charge you.</span>
       </div>
     </div>
-    <p style="margin:0;border-top:1px solid var(--rule);padding-top:20px;font-size:12.5px;color:var(--ink-soft);line-height:1.6;max-width:76ch;">Your country was set when you signed up and is what decides the tax line. Tokens never expire, and they are not refundable once an invitation has been accepted.</p>
+    <p style="margin:0;border-top:1px solid var(--rule);padding-top:20px;font-size:12.5px;color:var(--ink-soft);line-height:1.6;">Tokens never expire, and they are not refundable once an invitation has been accepted.</p>
   </div></div>`;
+}
+
+
+const Q_ADMIN = `query Admin {
+  adminStats { totalUsers usersIndia usersInternational tokensOutstanding }
+  adminUsers(limit: 50) { userId name email country tokenBalance connectionCount createdAt }
+  adminInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome }
+  adminPricingConfig { tokensPerBundle allowedSizes updatedAt updatedBy }
+}`;
+
+async function loadBms() {
+  S.loading = true; S.dataError = null; render();
+  try {
+    const d = await gql(Q_ADMIN);
+    S.stats = d.adminStats;
+    S.users = d.adminUsers || [];
+    S.adminInvites = d.adminInvitations || [];
+    S.pricing = d.adminPricingConfig;
+  } catch (e) { S.dataError = e.message; }
+  finally { S.loading = false; render(); }
+}
+
+async function adjustTokens(userId, delta) {
+  try {
+    await gql(`mutation Adj($u:ID!,$d:Int!){ adminAdjustTokens(userId:$u, delta:$d){ userId tokenBalance } }`,
+      { u: userId, d: delta });
+    await loadBms();
+  } catch (e) { toast(e.message); }
+}
+
+async function setBundleSize(tokens) {
+  try {
+    await gql(`mutation SetB($t:Int!){ adminSetTokensPerBundle(tokens:$t){ tokensPerBundle updatedAt updatedBy } }`,
+      { t: tokens });
+    await loadBms();
+    toast('A bundle now contains ' + tokens + ' tokens.');
+  } catch (e) { toast(e.message); }
 }
 
 /* ---------- BMS ---------- */
@@ -710,37 +726,57 @@ function bmsShell(active, inner) {
 }
 
 function vBmsUsers() {
-  const rows = BMS_USERS.map((u) => `<tr>
+  const st = S.stats || { totalUsers: 0, usersIndia: 0, usersInternational: 0, tokensOutstanding: 0 };
+  const pc = S.pricing;
+  const rows = S.users.map((u) => `<tr>
     <td style="font-size:12.5px;font-weight:500;white-space:nowrap;">${esc(u.name)}</td>
     <td class="mono" style="font-size:11.5px;color:var(--bms-mute);">${esc(u.email)}</td>
-    <td class="mono" style="font-size:11.5px;color:var(--bms-soft);">${u.cc}</td>
-    <td class="mono" style="font-size:13px;font-weight:600;">${S.bmsTok[u.email]}</td>
-    <td class="mono" style="font-size:12px;color:var(--bms-soft);">${u.conn}</td>
-    <td class="mono" style="font-size:11.5px;color:var(--bms-mute);">${u.age}</td>
+    <td class="mono" style="font-size:11.5px;color:var(--bms-soft);">${esc(u.country)}</td>
+    <td class="mono" style="font-size:13px;font-weight:600;">${u.tokenBalance}</td>
+    <td class="mono" style="font-size:12px;color:var(--bms-soft);">${u.connectionCount}</td>
+    <td class="mono" style="font-size:11.5px;color:var(--bms-mute);">${esc(String(u.createdAt).slice(0,10))}</td>
     <td><span style="display:flex;align-items:center;gap:5px;">
-      <button class="step" onclick="adjust('${u.email}',-1)" aria-label="Remove a token from ${esc(u.name)}">−</button>
-      <span class="mono" style="width:46px;height:24px;border:1px solid var(--bms-rule-2);display:inline-flex;align-items:center;justify-content:center;font-size:12px;">${S.bmsTok[u.email]}</span>
-      <button class="step" onclick="adjust('${u.email}',1)" aria-label="Add a token for ${esc(u.name)}">+</button>
+      <button class="step" onclick="adjustTokens('${u.userId}',-1)" aria-label="Remove a token from ${esc(u.name)}">&minus;</button>
+      <span class="mono" style="width:46px;height:24px;border:1px solid var(--bms-rule-2);display:inline-flex;align-items:center;justify-content:center;font-size:12px;">${u.tokenBalance}</span>
+      <button class="step" onclick="adjustTokens('${u.userId}',1)" aria-label="Add a token for ${esc(u.name)}">+</button>
     </span></td></tr>`).join('');
+
+  const sizes = (pc ? pc.allowedSizes : [25,50,75,100]).map((n) => {
+    const on = pc && pc.tokensPerBundle === n;
+    return `<button class="pill" aria-current="${on}" onclick="setBundleSize(${n})">${n}</button>`;
+  }).join('');
+
   return bmsShell('users', `
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <div style="display:flex;flex-direction:column;gap:3px;">
         <h1 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em;">User ledger</h1>
-        <span style="font-size:12px;color:var(--bms-mute);">1,284 registered accounts</span>
+        <span style="font-size:12px;color:var(--bms-mute);">${st.totalUsers} registered account${st.totalUsers===1?'':'s'}</span>
       </div>
-      <span class="pill">Country: All</span>
+      <button class="pill" onclick="loadBms()">Refresh</button>
     </div>
+
     <div class="stats">
-      <div><span class="lbl">Users · India</span><span class="mono" style="font-size:19px;font-weight:600;">812</span></div>
-      <div><span class="lbl">Users · International</span><span class="mono" style="font-size:19px;font-weight:600;">472</span></div>
-      <div><span class="lbl">Tokens outstanding</span><span class="mono" style="font-size:19px;font-weight:600;">9,140</span></div>
-      <div><span class="lbl">Refunded · 30 days</span><span class="mono" style="font-size:19px;font-weight:600;color:var(--bms-good);">318</span></div>
+      <div><span class="lbl">Users · India</span><span class="mono" style="font-size:19px;font-weight:600;">${st.usersIndia}</span></div>
+      <div><span class="lbl">Users · International</span><span class="mono" style="font-size:19px;font-weight:600;">${st.usersInternational}</span></div>
+      <div><span class="lbl">Tokens outstanding</span><span class="mono" style="font-size:19px;font-weight:600;">${st.tokensOutstanding}</span></div>
+      <div><span class="lbl">Tokens per bundle</span><span class="mono" style="font-size:19px;font-weight:600;color:var(--bms-accent);">${pc ? pc.tokensPerBundle : '—'}</span></div>
     </div>
-    <div class="tblwrap"><table>
-      <thead><tr><th>Name</th><th>Primary email</th><th>Country</th><th>Tokens</th><th>Connections</th><th>Age</th><th>Adjust balance</th></tr></thead>
+
+    <div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
+      <div style="display:flex;flex-direction:column;gap:3px;">
+        <span style="font-size:13px;font-weight:600;">Tokens per bundle</span>
+        <span style="font-size:11.5px;color:var(--bms-mute);max-width:70ch;">What one purchase buys. The amount charged does not change &mdash; ₹472.00 in India, $5.00 elsewhere &mdash; so this is the lever for the effective price of a connection.</span>
+      </div>
+      <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;">${sizes}</div>
+      ${pc && pc.updatedAt ? `<span style="font-size:11px;color:var(--bms-mute);">Last changed ${esc(String(pc.updatedAt).slice(0,16).replace('T',' '))} by ${esc(pc.updatedBy || 'unknown')}</span>` : ''}
+    </div>
+
+    ${S.users.length ? `<div class="tblwrap"><table>
+      <thead><tr><th>Name</th><th>Primary email</th><th>Country</th><th>Tokens</th><th>Connections</th><th>Joined</th><th>Adjust balance</th></tr></thead>
       <tbody>${rows}</tbody>
-    </table></div>
-    <p style="margin:0;font-size:11.5px;color:var(--bms-mute);">Every manual adjustment is written to the user’s token ledger with your address as the actor, and appears in the next daily digest.</p>`);
+    </table></div>` : `<div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:30px;font-size:13px;color:var(--bms-mute);">No accounts yet. The first sign-up on flaunt.network will appear here.</div>`}
+
+    <p style="margin:0;font-size:11.5px;color:var(--bms-mute);">Every adjustment is written to the user&rsquo;s token ledger with your address as the actor.</p>`);
 }
 
 function vBmsInv() {
@@ -748,34 +784,39 @@ function vBmsInv() {
              ACCEPTED:['var(--bms-good-line)','var(--bms-good-wash)','var(--bms-good)'],
              REJECTED:['var(--bms-bad-line)','var(--bms-bad-wash)','var(--bms-bad)'],
              EXPIRED:['#D3D9DF','#F1F4F6','#5C6675']};
+  const fallback = ['#D3D9DF','#F1F4F6','#5C6675'];
+  const all = S.adminInvites;
   const pills = ['ALL','PENDING','ACCEPTED','REJECTED','EXPIRED'].map((k) => {
-    const n = k==='ALL' ? BMS_INV.length : BMS_INV.filter((r)=>r.state===k).length;
+    const n = k==='ALL' ? all.length : all.filter((r)=>r.status===k).length;
     return `<button class="pill" onclick="S.bmsFilter='${k}';render();" aria-current="${S.bmsFilter===k}">
       ${k==='ALL'?'All':k.charAt(0)+k.slice(1).toLowerCase()} <span class="mono" style="font-size:11px;opacity:.75;">${n}</span></button>`;
   }).join('');
-  const shown = BMS_INV.filter((r)=>S.bmsFilter==='ALL'||r.state===S.bmsFilter);
+  const shown = all.filter((r)=>S.bmsFilter==='ALL'||r.status===S.bmsFilter);
   const rows = shown.map((r) => {
-    const [bd,bg,fg] = T[r.state];
+    const [bd,bg,fg] = T[r.status] || fallback;
     return `<tr>
-      <td class="mono" style="font-size:11px;color:var(--bms-mute);">${r.id}</td>
-      <td style="font-size:12px;white-space:nowrap;">${esc(r.sender)}</td>
-      <td class="mono" style="font-size:11px;color:var(--bms-soft);">${esc(r.to)}</td>
-      <td class="mono" style="font-size:10.5px;letter-spacing:.05em;color:var(--bms-mute);">${r.type}</td>
-      <td><span class="chip" style="border-color:${bd};background:${bg};padding:2px 8px;"><span class="dot" style="background:${fg};"></span><span class="mono" style="font-size:10px;letter-spacing:.05em;color:${fg};">${r.state}</span></span></td>
-      <td class="mono" style="font-size:11px;color:var(--bms-mute);">${r.sent}</td>
-      <td class="mono" style="font-size:11px;color:${r.state==='PENDING'?'var(--bms-warn)':'var(--bms-mute)'};">${r.exp}</td>
-      <td style="font-size:11.5px;color:${r.tok==='refunded'?'var(--bms-good)':'var(--bms-soft)'};">${r.tok}</td></tr>`;
+      <td class="mono" style="font-size:11px;color:var(--bms-mute);">${esc(String(r.inviteId).slice(0,8))}</td>
+      <td class="mono" style="font-size:11px;color:var(--bms-soft);">${esc(r.recipientEmail)}</td>
+      <td class="mono" style="font-size:10.5px;letter-spacing:.05em;color:var(--bms-mute);">${esc(r.type)}</td>
+      <td><span class="chip" style="border-color:${bd};background:${bg};padding:2px 8px;"><span class="dot" style="background:${fg};"></span><span class="mono" style="font-size:10px;letter-spacing:.05em;color:${fg};">${esc(r.status)}</span></span></td>
+      <td class="mono" style="font-size:11px;color:var(--bms-mute);">${esc(String(r.createdAt).slice(0,10))}</td>
+      <td class="mono" style="font-size:11px;color:${r.daysLeft!==null&&r.daysLeft!==undefined?'var(--bms-warn)':'var(--bms-mute)'};">${r.daysLeft!==null&&r.daysLeft!==undefined?esc('in '+r.daysLeft+'d'):'—'}</td>
+      <td style="font-size:11.5px;color:${String(r.tokenOutcome).indexOf('return')>-1?'var(--bms-good)':'var(--bms-soft)'};">${esc(r.tokenOutcome)}</td></tr>`;
   }).join('');
   return bmsShell('invitations', `
-    <div style="display:flex;flex-direction:column;gap:3px;">
-      <h1 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em;">Invitation console</h1>
-      <span style="font-size:12px;color:var(--bms-mute);">Network-wide. TTL refunds are issued by the stream handler, not from here.</span>
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div style="display:flex;flex-direction:column;gap:3px;">
+        <h1 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em;">Invitation console</h1>
+        <span style="font-size:12px;color:var(--bms-mute);">Network-wide. TTL refunds are issued by the stream handler, which is not built yet.</span>
+      </div>
+      <button class="pill" onclick="loadBms()">Refresh</button>
     </div>
     <div style="display:flex;gap:7px;flex-wrap:wrap;">${pills}</div>
-    <div class="tblwrap"><table>
-      <thead><tr><th>Invite id</th><th>Sender</th><th>Recipient</th><th>Type</th><th>State</th><th>Sent</th><th>Expires</th><th>Token</th></tr></thead>
+    ${all.length ? `<div class="tblwrap"><table>
+      <thead><tr><th>Invite</th><th>Recipient</th><th>Type</th><th>State</th><th>Sent</th><th>Expires</th><th>Token</th></tr></thead>
       <tbody>${rows}</tbody></table></div>
-    <span style="font-size:11.5px;color:var(--bms-mute);">Showing ${shown.length} of ${BMS_INV.length}</span>`);
+    <span style="font-size:11.5px;color:var(--bms-mute);">Showing ${shown.length} of ${all.length}</span>`
+    : `<div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:30px;font-size:13px;color:var(--bms-mute);">No invitations yet.</div>`}`);
 }
 
 function vBmsHooks() {
@@ -815,16 +856,25 @@ function vBmsHooks() {
 /* ---------- actions ---------- */
 function openInvite() { S.modal = 'invite'; render(); }
 function closeModal() { S.modal = null; render(); }
-function sendInvite() {
+async function sendInvite() {
   const el = document.getElementById('inv-email');
-  const email = (el && el.value.trim()) || 'nikhil.varma@zerodha.com';
-  if (S.balance < 1) { toast('Not enough tokens — buy a bundle first.'); return; }
-  S.balance -= 1;
-  S.invites.unshift({name:email.split('@')[0].replace(/[._]/g,' ').replace(/\b\w/g,(m)=>m.toUpperCase()),
-    email, key:'pending', status:'Pending', detail:'Just sent', sent:'today',
-    token:'7 days left', refunded:false, tone:'open'});
-  S.modal = null; S.invFilter = 'all';
-  go('#/invitations'); toast('Invitation sent. 1 token held — balance ' + S.balance + '.');
+  const email = (el && el.value.trim()) || '';
+  if (!email) { toast('Enter an email address.'); return; }
+  S.sending = true; render();
+  try {
+    await gql(`mutation Send($email:String!){ sendInvitation(email:$email){ inviteId recipientEmail status } }`, { email });
+    S.modal = null; S.invFilter = 'all';
+    await refreshPortal();
+    go('#/invitations');
+    // Deliberately explicit. The token is spent and the invitation recorded,
+    // but nothing reached the recipient — the invitation email is not built
+    // yet. Saying "sent" here would be a claim the user cannot check.
+    toast('Invitation recorded — 1 token held. Email delivery is not live yet, so ' + email + ' has not been notified.');
+  } catch (e) {
+    toast(e.message || 'Could not send the invitation.');
+  } finally {
+    S.sending = false; render();
+  }
 }
 function requestIntro(id) {
   if (S.balance < 1) { toast('Not enough tokens — buy a bundle first.'); return; }
@@ -854,6 +904,99 @@ function adjust(email, d) {
   render();
 }
 
+
+
+/* ---------- live data ---------- */
+
+/**
+ * AppSync call carrying the Cognito id token. Errors come back in a 200 body,
+ * so the GraphQL errors array is checked before the payload is trusted.
+ */
+async function gql(query, variables) {
+  const s = session();
+  if (!s || !s.idToken) throw new Error('Your session has expired. Sign in again.');
+  if (!API_READY) throw new Error('This build has no API endpoint configured.');
+  const res = await fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: s.idToken },
+    body: JSON.stringify({ query, variables: variables || {} })
+  });
+  const body = await res.json().catch(() => ({}));
+  if (body.errors && body.errors.length) throw new Error(body.errors[0].message || 'Request failed');
+  if (!res.ok) throw new Error('Request failed (' + res.status + ')');
+  return body.data;
+}
+
+const Q_PORTAL = `query Portal {
+  me { userId name email designation organisation location bio country tokenBalance createdAt connectionCount }
+  myConnections { userId name designation organisation location connectedAt }
+  myInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome }
+  tokenPrice { currency symbol tokens baseMinor taxMinor totalMinor taxLabel baseDisplay taxDisplay totalDisplay }
+}`;
+
+/**
+ * Loads everything the member app renders. Where the user lands depends on it:
+ * an empty network means there is nothing to look at, so a first-run account is
+ * sent to send its first invitation rather than to an empty list.
+ */
+async function loadPortal() {
+  S.loading = true; S.dataError = null; render();
+  try {
+    const d = await gql(Q_PORTAL);
+    S.me = d.me;
+    S.connections = d.myConnections || [];
+    S.invites = d.myInvitations || [];
+    S.price = d.tokenPrice;
+    if (!S.landed) {
+      S.landed = true;
+      go(S.connections.length > 0 ? '#/network' : '#/start');
+    }
+  } catch (e) {
+    S.dataError = e.message;
+  } finally {
+    S.loading = false; render();
+  }
+}
+
+async function refreshPortal() {
+  try {
+    const d = await gql(Q_PORTAL);
+    S.me = d.me; S.connections = d.myConnections || [];
+    S.invites = d.myInvitations || []; S.price = d.tokenPrice;
+  } catch (e) { S.dataError = e.message; }
+  render();
+}
+
+/**
+ * A long-open tab keeps running the release it loaded. version.json is served
+ * uncached, so comparing it to this build's id is how the tab learns it is
+ * behind — then it offers a refresh rather than reloading under the user.
+ */
+function watchForNewVersion() {
+  if (!BUILD_ID || BUILD_ID.indexOf('__') === 0) return;
+  setInterval(async () => {
+    try {
+      const r = await fetch('version.json?t=' + Date.now(), { cache: 'no-store' });
+      const v = await r.json();
+      if (v && v.build && v.build !== BUILD_ID && !S.newVersion) { S.newVersion = true; render(); }
+    } catch (e) { /* offline or transient — try again next tick */ }
+  }, 90000);
+}
+
+function versionTip() {
+  if (!S.newVersion) return '';
+  const bms = APP === 'bms';
+  return `<div style="position:fixed;left:50%;transform:translateX(-50%);bottom:26px;z-index:80;
+      display:flex;align-items:center;gap:14px;
+      background:${bms ? 'var(--bms-ink)' : 'var(--ink)'};color:${bms ? '#E8EBEE' : 'var(--paper)'};
+      padding:10px 14px;font-size:12.5px;box-shadow:0 8px 28px rgba(0,0,0,.22);">
+    <span>A newer version of Flaunt is available.</span>
+    <button onclick="location.reload()" style="background:none;border:1px solid rgba(255,255,255,.35);
+      color:inherit;font-size:12px;padding:4px 11px;">Refresh</button>
+    <button onclick="S.newVersion=false;render();" aria-label="Dismiss"
+      style="background:none;border:none;color:inherit;opacity:.6;font-size:14px;padding:0 2px;">&times;</button>
+  </div>`;
+}
 
 /* ---------- BMS sign-in: passwordless email OTP (Cognito CUSTOM_AUTH) ---------- */
 const IDP = () => `https://cognito-idp.${AUTH.region}.amazonaws.com/`;
@@ -1139,7 +1282,7 @@ function vPortalAuth() {
 /* ---------- modal + router ---------- */
 function modalHtml() {
   if (S.modal !== 'invite') return '';
-  const after = Math.max(0, S.balance - 1);
+  const after = Math.max(0, (S.me ? S.me.tokenBalance : 1) - 1);
   return `<div class="scrim" onclick="if(event.target===this)closeModal()">
     <div class="modal" role="dialog" aria-modal="true" aria-label="Send an invitation">
       <div style="display:flex;flex-direction:column;gap:7px;">
@@ -1148,7 +1291,7 @@ function modalHtml() {
       </div>
       <div style="display:flex;flex-direction:column;gap:7px;">
         <label class="lbl" for="inv-email">Their email</label>
-        <input class="field mono" id="inv-email" style="font-size:13.5px;" value="nikhil.varma@zerodha.com">
+        <input class="field mono" id="inv-email" type="email" placeholder="name@company.com" style="font-size:13.5px;">
       </div>
       <div style="border-top:1px solid var(--rule-2);border-bottom:1px solid var(--rule-2);padding:20px 0;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
         <div style="display:flex;flex-direction:column;gap:3px;">
@@ -1156,7 +1299,7 @@ function modalHtml() {
           <span style="font-size:12.5px;color:var(--ink-soft);">Deducted the moment you send</span>
         </div>
         <div style="display:flex;align-items:center;gap:13px;">
-          <span class="mono" style="font-size:25px;color:var(--ghost);text-decoration:line-through;">${S.balance}</span>
+          <span class="mono" style="font-size:25px;color:var(--ghost);text-decoration:line-through;">${S.me ? S.me.tokenBalance : "—"}</span>
           <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="1.6"><path d="M4 12 H19 M14 7 L19 12 L14 17"/></svg>
           <span class="mono" style="font-size:25px;font-weight:500;">${after}</span>
         </div>
@@ -1167,7 +1310,7 @@ function modalHtml() {
       </div>
       <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;">
         <button onclick="closeModal()" style="background:none;border:none;font-size:13.5px;color:var(--ink-soft);padding:13px 4px;">Cancel</button>
-        <button class="btn" onclick="sendInvite()"><span style="display:flex;">${COIN}</span>Send invitation — 1 token</button>
+        <button class="btn" ${S.sending ? "disabled" : ""} onclick="sendInvite()"><span style="display:flex;">${COIN}</span>${S.sending ? "Sending…" : "Send invitation — 1 token"}</button>
       </div>
     </div></div>`;
 }
@@ -1175,9 +1318,18 @@ function modalHtml() {
 function view() {
   if (APP === 'bms' && !signedIn()) return vBmsLogin();
   if (APP === 'portal' && !signedIn()) return vPortalAuth();
+  if (APP === 'portal' && S.dataError) {
+    return topbar('') + `<div class="wrap"><div class="col">${emptyState(
+      'Could not load your account', S.dataError,
+      `<button class="btn" onclick="S.dataError=null;S.me=null;render();">Try again</button>`)}</div></div>`;
+  }
+  if (APP === 'portal' && !S.me) {
+    return `<div class="wrap"><div class="col"><p style="font-size:13.5px;color:var(--ink-soft);">Loading…</p></div></div>`;
+  }
   const h = location.hash || homeForApp();
   if (h === '#/signup') return vSignup();
   if (h === '#/welcome') return vWelcome();
+  if (h === '#/start') return vFirstRun();
   if (h === '#/invitations') return vInvitations();
   if (h === '#/gatekeeper') return vGatekeeper();
   if (h === '#/tokens') return vTokens();
@@ -1195,6 +1347,10 @@ function screensForApp() {
 function homeForApp() { return APP === 'bms' ? '#/bms/users' : '#/network'; }
 
 function render() {
+  // Nothing truthful can be rendered until the first load returns.
+  if (APP === 'portal' && signedIn() && !S.me && !S.dataError && !S.loading) loadPortal();
+  if (APP === 'bms' && signedIn() && !S.stats && !S.dataError && !S.loading) loadBms();
+
   // portal must not serve the admin console, and bms must not serve the user
   // app: they are different hostnames with different audiences.
   let h = location.hash || homeForApp();
@@ -1206,9 +1362,11 @@ function render() {
     screensForApp().map((s) => `<button onclick="go('${s.h}')" ${h===s.h?'aria-current="true"':''}>${s.t}</button>`).join('')
     + `<button onclick="reset();render();" title="Reset the walkthrough" style="margin-left:8px;color:#8C8377;">Reset</button>`;
   document.getElementById('app').innerHTML = view();
-  document.getElementById('layer').innerHTML = modalHtml() + (S.toast ? `<div class="toast">${esc(S.toast)}</div>` : '');
+  document.getElementById('layer').innerHTML = modalHtml() + versionTip()
+    + (S.toast ? `<div class="toast">${esc(S.toast)}</div>` : '');
 }
 addEventListener('hashchange', render);
+watchForNewVersion();
 if (!location.hash) location.hash = homeForApp();
 render();
 </script>
