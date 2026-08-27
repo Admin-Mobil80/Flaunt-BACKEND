@@ -1,4 +1,11 @@
 .DS_Store
-node_modules/
-.aws-sam/
+*.js
+!jest.config.js
+*.d.ts
+node_modules
 *.log
+
+# CDK asset staging directory
+.cdk.staging
+cdk.out
+cdk.out.*

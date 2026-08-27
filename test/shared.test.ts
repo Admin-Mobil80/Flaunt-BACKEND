@@ -1,0 +1,169 @@
+import * as keys from '../functions/shared/keys';
+import { validateBio, validateCountry, validateDesignation, validateLocation,
+  validateOrganisation, countWords, ValidationError } from '../functions/shared/validation';
+
+describe('key builders', () => {
+  // Two casings of one address must not become two accounts.
+  test('email keys are case- and whitespace-insensitive', () => {
+    expect(keys.emailOwnership('  RiYaD@Mobil80.COM ')).toEqual({
+      PK: 'EMAIL#riyad@mobil80.com',
+      SK: 'UNIQUE',
+    });
+  });
+
+  test('name search folds accents so "Sahin" finds "Şahin"', () => {
+    expect(keys.gsi3NameSearch('Ünal  Şahin', 'u9')).toEqual({
+      GSI3PK: 'NAME#u',
+      GSI3SK: 'unal sahin#u9',
+    });
+  });
+
+  test('non-alphabetic names land in the # bucket rather than a stray partition', () => {
+    expect(keys.nameBucket('声優')).toBe('#');
+  });
+
+  // Status leads the inbox sort key so "my pending invites" is a begins_with.
+  test('inbox sort key is status-prefixed', () => {
+    expect(keys.gsi2Inbox('A@B.com', keys.INVITE_STATUS.PENDING, '2026-08-27T10:00:00.000Z')).toEqual({
+      GSI2PK: 'EMAIL#a@b.com',
+      GSI2SK: 'PENDING#2026-08-27T10:00:00.000Z',
+    });
+  });
+
+  // Ledger entries in the same millisecond must not overwrite each other.
+  test('ledger sort keys are unique under collision', () => {
+    const t = '2026-08-27T10:00:00.000Z';
+    expect(keys.transaction('u1', t).SK).not.toEqual(keys.transaction('u1', t).SK);
+  });
+
+  test('TTL is epoch seconds, seven days out', () => {
+    const from = new Date('2026-08-27T00:00:00Z');
+    const ttl = keys.inviteExpiryEpochSeconds(from);
+    expect(ttl).toBe(Math.floor(from.getTime() / 1000) + 7 * 86400);
+    // A milliseconds value would be ~1000x larger and expire in the year 50,000.
+    expect(ttl).toBeLessThan(2_000_000_000);
+  });
+
+  test('expiry is decided by the timestamp, not by the row still existing', () => {
+    const from = new Date('2026-08-27T00:00:00Z');
+    const ttl = keys.inviteExpiryEpochSeconds(from);
+    expect(keys.isExpired(ttl, new Date('2026-09-04T00:00:00Z'))).toBe(true);
+    expect(keys.isExpired(ttl, new Date('2026-08-30T00:00:00Z'))).toBe(false);
+  });
+
+  test('only ACCEPTED keeps the token', () => {
+    expect(keys.TERMINAL_KEEPS_TOKEN).toEqual(['ACCEPTED']);
+    expect(keys.TERMINAL_REFUNDS_TOKEN).toEqual(
+      expect.arrayContaining(['REJECTED', 'GATEKEEPER_DENIED', 'EXPIRED'])
+    );
+  });
+});
+
+describe('bio validation (§3.1: 300 words, enforced backend-side)', () => {
+  const words = (n: number) => 'word '.repeat(n).trim();
+
+  test('accepts exactly 300 words', () => {
+    expect(countWords(words(300))).toBe(300);
+    expect(validateBio(words(300))).toHaveLength(words(300).length);
+  });
+
+  test('rejects 301', () => {
+    expect(() => validateBio(words(301))).toThrow(ValidationError);
+  });
+
+  test('counts words by whitespace runs, not spaces', () => {
+    expect(countWords('one\n\ttwo   three')).toBe(3);
+  });
+
+  test('rejects a blank or missing bio', () => {
+    expect(() => validateBio('   \n ')).toThrow(/required/);
+    expect(() => validateBio(undefined)).toThrow(/required/);
+  });
+
+  // 300 "words" can still be a 120KB item without a byte ceiling.
+  test('rejects few-but-enormous words', () => {
+    expect(() => validateBio('x'.repeat(7000))).toThrow(/bytes/);
+  });
+});
+
+describe('country validation (drives pricing, §3.3)', () => {
+  test('normalizes to uppercase alpha-2', () => {
+    expect(validateCountry(' in ')).toBe('IN');
+  });
+
+  test('rejects alpha-3 and junk', () => {
+    expect(() => validateCountry('IND')).toThrow(ValidationError);
+    expect(() => validateCountry('')).toThrow(ValidationError);
+  });
+});
+
+describe('designation (required — it is what a masked profile is judged on)', () => {
+  test('collapses inner whitespace and trims', () => {
+    expect(validateDesignation('  Design   director,  Ather Energy ')).toBe('Design director, Ather Energy');
+  });
+
+  test('rejects blank or missing', () => {
+    expect(() => validateDesignation('   ')).toThrow(/required/);
+    expect(() => validateDesignation(undefined)).toThrow(ValidationError);
+  });
+
+  test('rejects over 100 characters', () => {
+    expect(() => validateDesignation('x'.repeat(101))).toThrow(/100 characters/);
+    expect(validateDesignation('x'.repeat(100))).toHaveLength(100);
+  });
+});
+
+describe('location (optional, display-only)', () => {
+  test('accepts and normalizes', () => {
+    expect(validateLocation(' Bengaluru,   India ')).toBe('Bengaluru, India');
+  });
+
+  // Optional means an absent value is valid, not an error and not an empty string.
+  test('blank, null and undefined all mean "not provided"', () => {
+    expect(validateLocation('')).toBeUndefined();
+    expect(validateLocation('   ')).toBeUndefined();
+    expect(validateLocation(null)).toBeUndefined();
+    expect(validateLocation(undefined)).toBeUndefined();
+  });
+
+  test('rejects over 80 characters', () => {
+    expect(() => validateLocation('x'.repeat(81))).toThrow(/80 characters/);
+  });
+
+  // Location is display text; country is the billing fact. A user in Dubai whose
+  // account country is IN still pays GST, and neither field may be inferred from
+  // the other — this test exists to pin that they are independent.
+  test('does not influence country, and vice versa', () => {
+    expect(validateLocation('Dubai, UAE')).toBe('Dubai, UAE');
+    expect(validateCountry('IN')).toBe('IN');
+  });
+});
+
+describe('organisation (optional, free text by decision)', () => {
+  test('normalizes whitespace', () => {
+    expect(validateOrganisation('  Ather   Energy ')).toBe('Ather Energy');
+  });
+
+  test('blank, null and undefined all mean "not provided"', () => {
+    expect(validateOrganisation('')).toBeUndefined();
+    expect(validateOrganisation('   ')).toBeUndefined();
+    expect(validateOrganisation(null)).toBeUndefined();
+    expect(validateOrganisation(undefined)).toBeUndefined();
+  });
+
+  test('rejects over 100 characters', () => {
+    expect(() => validateOrganisation('x'.repeat(101))).toThrow(/100 characters/);
+  });
+
+  // Free text means no canonicalisation: two spellings of one employer are two
+  // distinct strings, which is the accepted cost of not running a company registry.
+  test('does not canonicalise — spellings stay distinct', () => {
+    expect(validateOrganisation('Ather Energy')).not.toBe(validateOrganisation('Ather Energy Pvt Ltd'));
+  });
+
+  // A title is required; an employer is not. Someone between jobs still has a profile.
+  test('a profile is valid with a designation and no organisation', () => {
+    expect(validateDesignation('Independent consultant')).toBe('Independent consultant');
+    expect(validateOrganisation(undefined)).toBeUndefined();
+  });
+});
