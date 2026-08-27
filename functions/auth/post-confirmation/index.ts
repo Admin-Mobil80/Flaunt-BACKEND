@@ -1,5 +1,5 @@
 import type { PostConfirmationTriggerHandler } from 'aws-lambda';
-import { TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import * as k from '../../shared/keys';
 
@@ -18,6 +18,31 @@ const SIGNUP_TOKEN_GRANT = 10;
  * a second 10 tokens — the conditional put on the profile makes a repeat
  * transaction fail as a whole rather than top the balance up again.
  */
+
+/**
+ * Counters are updated OUTSIDE the transaction, deliberately.
+ *
+ * A daily counter is one item that every write in the system touches, so
+ * including it made concurrent operations conflict with each other rather than
+ * with anything they actually contended for — a burst of sign-ups from one
+ * country on one day failed outright, after Cognito had already created the
+ * accounts. Load testing surfaced it at 30 concurrent sign-ups.
+ *
+ * These numbers are derived analytics. Nothing reads them to make a decision,
+ * and the digest tolerates being slightly under. Losing one is immaterial;
+ * failing a user's sign-up or refund to record one is not. Best effort, never
+ * throws, never blocks.
+ */
+async function bumpCounter(key: { PK: string; SK: string }, expression: string, values: Record<string, number>) {
+  try {
+    await ddb.send(new UpdateCommand({
+      TableName: TABLE_NAME, Key: key, UpdateExpression: expression, ExpressionAttributeValues: values,
+    }));
+  } catch (err) {
+    console.warn(JSON.stringify({ msg: 'counter update skipped', key, err: String(err) }));
+  }
+}
+
 export const handler: PostConfirmationTriggerHandler = async (event) => {
   const a = event.request.userAttributes;
   const userId = a.sub;
@@ -99,15 +124,6 @@ export const handler: PostConfirmationTriggerHandler = async (event) => {
             },
           },
         },
-        {
-          // Pre-aggregated so the nightly digest never has to scan (§4.3).
-          Update: {
-            TableName: TABLE_NAME,
-            Key: k.statsCountry(country, day),
-            UpdateExpression: 'ADD signups :one, tokensGranted :grant',
-            ExpressionAttributeValues: { ':one': 1, ':grant': SIGNUP_TOKEN_GRANT },
-          },
-        },
       ],
     }));
   } catch (err: any) {
@@ -120,6 +136,9 @@ export const handler: PostConfirmationTriggerHandler = async (event) => {
     if (!(cancelled && onlyConditionFailures)) throw err;
     console.log(JSON.stringify({ msg: 'profile already provisioned, skipping', userId }));
   }
+
+  await bumpCounter(k.statsCountry(country, day),
+    'ADD signups :one, tokensGranted :grant', { ':one': 1, ':grant': SIGNUP_TOKEN_GRANT });
 
   return event;
 };

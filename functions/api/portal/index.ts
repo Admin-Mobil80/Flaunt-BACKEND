@@ -12,6 +12,31 @@ import {
 
 const INVITE_COST = 1;
 
+
+/**
+ * Counters are updated OUTSIDE the transaction, deliberately.
+ *
+ * A daily counter is one item that every write in the system touches, so
+ * including it made concurrent operations conflict with each other rather than
+ * with anything they actually contended for — a burst of sign-ups from one
+ * country on one day failed outright, after Cognito had already created the
+ * accounts. Load testing surfaced it at 30 concurrent sign-ups.
+ *
+ * These numbers are derived analytics. Nothing reads them to make a decision,
+ * and the digest tolerates being slightly under. Losing one is immaterial;
+ * failing a user's sign-up or refund to record one is not. Best effort, never
+ * throws, never blocks.
+ */
+async function bumpCounter(key: { PK: string; SK: string }, expression: string, values: Record<string, number>) {
+  try {
+    await ddb.send(new UpdateCommand({
+      TableName: TABLE_NAME, Key: key, UpdateExpression: expression, ExpressionAttributeValues: values,
+    }));
+  } catch (err) {
+    console.warn(JSON.stringify({ msg: 'counter update skipped', key, err: String(err) }));
+  }
+}
+
 /** The caller's own id, taken from the verified Cognito claims — never from arguments. */
 function callerId(event: any): string {
   const sub = event?.identity?.sub ?? event?.identity?.claims?.sub;
@@ -424,17 +449,10 @@ async function acceptInvitation(userId: string, inviteId: string) {
           },
         },
       },
-      {
-        Update: {
-          TableName: TABLE_NAME,
-          Key: k.statsGlobal(now.slice(0, 10)),
-          UpdateExpression: 'ADD invitesAccepted :one',
-          ExpressionAttributeValues: { ':one': 1 },
-        },
-      },
     ],
   }));
 
+  await bumpCounter(k.statsGlobal(now.slice(0, 10)), 'ADD invitesAccepted :one', { ':one': 1 });
   return shapeInvite({ ...inv, status, expiresAt: null });
 }
 
@@ -498,14 +516,6 @@ async function declineInvitation(userId: string, inviteId: string) {
           },
         },
       },
-      {
-        Update: {
-          TableName: TABLE_NAME,
-          Key: k.statsGlobal(now.slice(0, 10)),
-          UpdateExpression: 'ADD invitesRejected :one, tokensRefunded :one',
-          ExpressionAttributeValues: { ':one': 1 },
-        },
-      },
     ],
   }));
 
@@ -513,6 +523,8 @@ async function declineInvitation(userId: string, inviteId: string) {
   if (sender?.primaryEmail) {
     await send(refundEmail({ to: sender.primaryEmail, recipientEmail: inv.recipientEmail, reason: 'REJECTED' }));
   }
+  await bumpCounter(k.statsGlobal(now.slice(0, 10)),
+    'ADD invitesRejected :one, tokensRefunded :one', { ':one': 1 });
   return shapeInvite({ ...inv, status, expiresAt: null });
 }
 
@@ -579,14 +591,6 @@ async function cancelInvitation(userId: string, inviteId: string) {
               entityType: 'TXN', delta: 1, reason: k.TXN_REASON.REFUND_CANCELLED,
               relatedId: inviteId, actorId: userId, createdAt: now,
             },
-          },
-        },
-        {
-          Update: {
-            TableName: TABLE_NAME,
-            Key: k.statsGlobal(now.slice(0, 10)),
-            UpdateExpression: 'ADD invitesCancelled :one, tokensRefunded :one',
-            ExpressionAttributeValues: { ':one': 1 },
           },
         },
       ],

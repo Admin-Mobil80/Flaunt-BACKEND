@@ -1,6 +1,6 @@
 import type { DynamoDBStreamHandler, DynamoDBRecord } from 'aws-lambda';
 import { unmarshall } from '@aws-sdk/util-dynamodb';
-import { TransactWriteCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
+import { TransactWriteCommand, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import { send, refundEmail } from '../../shared/email';
 import * as k from '../../shared/keys';
@@ -108,14 +108,6 @@ export const handler: DynamoDBStreamHandler = async (event) => {
               },
             },
           },
-          {
-            Update: {
-              TableName: TABLE_NAME,
-              Key: k.statsGlobal(now.slice(0, 10)),
-              UpdateExpression: 'ADD invitesExpired :one, tokensRefunded :one',
-              ExpressionAttributeValues: { ':one': 1 },
-            },
-          },
         ],
       }));
       console.log(JSON.stringify({ msg: 'refunded expired invitation', inviteId: item.inviteId, senderId: item.senderId }));
@@ -126,6 +118,19 @@ export const handler: DynamoDBStreamHandler = async (event) => {
         continue;
       }
       throw err;
+    }
+
+    // Outside the transaction: a whole TTL batch shares one daily counter item,
+    // so including it made expiries conflict with each other and lose refunds.
+    // The counter is analytics; the refund is money.
+    try {
+      await ddb.send(new UpdateCommand({
+        TableName: TABLE_NAME, Key: k.statsGlobal(now.slice(0, 10)),
+        UpdateExpression: 'ADD invitesExpired :one, tokensRefunded :one',
+        ExpressionAttributeValues: { ':one': 1 },
+      }));
+    } catch (err) {
+      console.warn(JSON.stringify({ msg: 'counter update skipped', err: String(err) }));
     }
 
     // After the ledger, and never blocking it: the money movement is committed
