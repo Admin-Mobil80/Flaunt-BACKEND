@@ -64,7 +64,15 @@ export class CiDeployStack extends Stack {
     for (const site of [props.portal, props.bms]) {
       site.bucket.grantReadWrite(role);
       role.addToPolicy(new iam.PolicyStatement({
-        actions: ['cloudfront:CreateInvalidation'],
+        // GetInvalidation as well as CreateInvalidation: the workflow waits for
+        // the invalidation to finish before reporting success, and the waiter
+        // polls GetInvalidation. Granting only Create lets the deploy work but
+        // fails the run at the wait — content live, workflow red.
+        actions: [
+          'cloudfront:CreateInvalidation',
+          'cloudfront:GetInvalidation',
+          'cloudfront:ListInvalidations',
+        ],
         resources: [
           `arn:aws:cloudfront::${this.account}:distribution/${site.distribution.distributionId}`,
         ],
