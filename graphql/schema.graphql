@@ -29,6 +29,7 @@ type Profile {
   degree: Int
   # Who could introduce you, when degree is 2.
   viaName: String
+  viaUserId: ID
   # True when a second address is on file but not yet proved.
   secondaryEmailUnverified: Boolean
 }
@@ -89,6 +90,27 @@ type BundlePrice {
   totalDisplay: String!
 }
 
+type SecondDegreePage {
+  items: [Profile!]!
+  total: Int!
+  hasMore: Boolean!
+}
+
+type IntroductionRequest {
+  inviteId: ID!
+  status: String!
+  createdAt: String!
+  daysLeft: Int
+  # Who asked.
+  requesterName: String!
+  requesterDesignation: String
+  requesterUserId: ID!
+  # Who they want to meet.
+  targetName: String!
+  targetDesignation: String
+  targetUserId: ID!
+}
+
 type AdminUser @aws_cognito_user_pools {
   userId: ID!
   name: String!
@@ -126,7 +148,10 @@ type Query {
   me: Me!
   myConnections: [Connection!]!
   # People one step beyond your direct contacts, and who could introduce you.
-  secondDegree: [Profile!]!
+  # Paginated: a well-connected member's second degree runs to thousands.
+  secondDegree(limit: Int, offset: Int): SecondDegreePage!
+  # Introduction requests waiting on the caller's approval, as the gatekeeper.
+  gatekeeperRequests: [IntroductionRequest!]!
   myInvitations: [Invitation!]!
   tokenPrice: BundlePrice!
   # The invitation named by a link, returned only to the address it was sent to.
@@ -158,6 +183,13 @@ type Mutation {
   cancelInvitation(inviteId: ID!): Invitation!
   # Removes the connection for BOTH people. There is no one-sided version.
   removeConnection(userId: ID!): Boolean!
+  # Asks a mutual connection to introduce you to someone at second degree.
+  # Costs a token immediately, refunded if the gatekeeper declines, the target
+  # declines, or nobody responds within seven days.
+  requestIntroduction(targetUserId: ID!, viaUserId: ID!): Invitation!
+  # Gatekeeper decisions. Approving forwards the request to the target.
+  approveIntroduction(inviteId: ID!): Invitation!
+  declineIntroduction(inviteId: ID!): Invitation!
   updateProfile(
     name: String
     designation: String

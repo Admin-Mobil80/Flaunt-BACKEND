@@ -118,11 +118,64 @@ export function invitationEmail(opts: {
   };
 }
 
+/** Asks the mutual connection to decide. Neither side is told they were asked. */
+export function gatekeeperEmail(opts: {
+  to: string; gatekeeperName: string;
+  requesterName: string; requesterLine: string;
+  targetName: string; targetLine: string;
+}): Mail {
+  const { to, requesterName, requesterLine, targetName, targetLine } = opts;
+  return {
+    to,
+    subject: `${requesterName} would like an introduction to ${targetName}`,
+    html: layout(
+      `${escapeHtml(requesterName)} would like an introduction to ${escapeHtml(targetName)}.`,
+      `<p style="margin:0 0 12px;">You are connected to both.</p>
+       <p style="margin:0 0 6px;"><strong style="font-weight:500;">${escapeHtml(requesterName)}</strong>${requesterLine ? ` &mdash; ${escapeHtml(requesterLine)}` : ''}</p>
+       <p style="margin:0 0 12px;"><strong style="font-weight:500;">${escapeHtml(targetName)}</strong>${targetLine ? ` &mdash; ${escapeHtml(targetLine)}` : ''}</p>
+       <p style="margin:0 0 12px;">${escapeHtml(targetName)} hears nothing unless you approve. If you decline, ${escapeHtml(requesterName)} is told you passed &mdash; not why &mdash; and their token is returned.</p>
+       <p style="margin:0;">The request is open for seven days.</p>`,
+      { label: 'Open Flaunt to decide', url: `${PORTAL_URL}/#/gatekeeper` }
+    ),
+    text: `${requesterName} would like an introduction to ${targetName}. You are connected to both.\n\n`
+      + `${requesterName}${requesterLine ? ` — ${requesterLine}` : ''}\n`
+      + `${targetName}${targetLine ? ` — ${targetLine}` : ''}\n\n`
+      + `${targetName} hears nothing unless you approve. Declining returns their token.\n\n`
+      + `Decide: ${PORTAL_URL}/#/gatekeeper\n`,
+  };
+}
+
+/** Sent to the target once the gatekeeper approves. */
+export function introForwardEmail(opts: {
+  to: string; requesterName: string; requesterLine: string;
+  requesterBio: string | null; gatekeeperName: string; inviteId: string;
+}): Mail {
+  const { to, requesterName, requesterLine, requesterBio, gatekeeperName, inviteId } = opts;
+  const link = `${PORTAL_URL}/?invite=${encodeURIComponent(inviteId)}&email=${encodeURIComponent(to)}&existing=1`;
+  return {
+    to,
+    subject: `${gatekeeperName} thinks you should meet ${requesterName}`,
+    html: layout(
+      `${escapeHtml(gatekeeperName)} thinks you should meet ${escapeHtml(requesterName)}.`,
+      `<p style="margin:0 0 12px;"><strong style="font-weight:500;">${escapeHtml(requesterName)}</strong>${requesterLine ? ` &mdash; ${escapeHtml(requesterLine)}` : ''}</p>
+       ${requesterBio ? `<p style="margin:0 0 12px;color:#37312A;">${escapeHtml(requesterBio)}</p>` : ''}
+       <p style="margin:0 0 12px;">They asked ${escapeHtml(gatekeeperName)}, who you are both connected to, to make the introduction.</p>
+       <p style="margin:0;">Accepting connects you directly. Declining returns their token, and they are told you passed rather than why.</p>`,
+      { label: 'See the introduction', url: link }
+    ),
+    text: `${gatekeeperName} thinks you should meet ${requesterName}.\n\n`
+      + `${requesterName}${requesterLine ? ` — ${requesterLine}` : ''}\n\n`
+      + (requesterBio ? `${requesterBio}\n\n` : '')
+      + `They asked ${gatekeeperName}, who you are both connected to, to make the introduction.\n\n${link}\n`,
+  };
+}
+
 export function refundEmail(opts: { to: string; recipientEmail: string; reason: 'EXPIRED' | 'REJECTED' | 'GATEKEEPER_DENIED'; balance?: number }): Mail {
   const { to, recipientEmail, reason } = opts;
   const what = reason === 'EXPIRED'
     ? `did not respond within seven days`
-    : (reason === 'REJECTED' ? `declined your invitation` : `was not passed on`);
+    : (reason === 'REJECTED' ? `declined your invitation`
+      : `could not be introduced — your request was not passed on`);
   return {
     to,
     subject: `Your token has been returned`,

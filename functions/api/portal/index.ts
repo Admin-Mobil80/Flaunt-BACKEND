@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import { priceForCountry, formatMinor, coerceBundleSize } from '../../shared/pricing';
 import * as k from '../../shared/keys';
-import { send, invitationEmail, refundEmail } from '../../shared/email';
+import { send, invitationEmail, refundEmail, gatekeeperEmail, introForwardEmail } from '../../shared/email';
 import {
   validateName, validateBio, validateDesignation, validateOrganisation, validateLocation,
   validateSecondaryEmail, ValidationError,
@@ -661,6 +661,7 @@ async function profile(callerId: string, targetId: string) {
       secondaryEmail: null,
       degree: 2,
       viaName: via?.name ?? null,
+      viaUserId: mutualId,
       connectedAt: null,
     };
   }
@@ -696,75 +697,6 @@ async function removeConnection(userId: string, otherId: string) {
 }
 
 /** Caps the fan-out below. See the note in secondDegree. */
-const SECOND_DEGREE_FAN_OUT = 60;
-
-/**
- * Everyone one step beyond the caller's direct contacts.
- *
- * This is the one genuinely expensive read in the app: it queries each direct
- * contact's connections, so it costs 1 + |contacts| queries. Resolving a SINGLE
- * profile's degree does not work this way — that intersects two contact lists
- * in two reads — but building the whole set has no such shortcut.
- *
- * So the fan-out is capped rather than unbounded. Past the cap the list is
- * incomplete rather than slow, which is the better failure for a browsing view;
- * the profile query stays exact, so nothing that matters is decided from a
- * truncated set.
- *
- * Emails are omitted entirely here. The masked address belongs on the profile,
- * where it is one person's detail, not sprayed across a list.
- */
-async function secondDegree(userId: string) {
-  const mine = await connectionRows(userId);
-  if (mine.length === 0) return [];
-  const direct = new Set(mine.map((r: any) => r.otherUserId));
-
-  const lists = await Promise.all(
-    mine.slice(0, SECOND_DEGREE_FAN_OUT).map(async (r: any) => ({
-      viaId: r.otherUserId,
-      rows: await connectionRows(r.otherUserId),
-    }))
-  );
-
-  // First contact to reach someone becomes the introducer shown for them.
-  const found = new Map<string, string>();
-  for (const { viaId, rows } of lists) {
-    for (const row of rows as any[]) {
-      const id = row.otherUserId;
-      if (id === userId || direct.has(id) || found.has(id)) continue;
-      found.set(id, viaId);
-    }
-  }
-  if (found.size === 0) return [];
-
-  const ids = [...found.keys()];
-  const [people, vias] = await Promise.all([
-    Promise.all(ids.map((id) => ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(id) })))),
-    Promise.all([...new Set(found.values())].map(async (id) => ({
-      id, item: (await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(id) }))).Item,
-    }))),
-  ]);
-  const viaName = new Map(vias.map((v) => [v.id, v.item?.name ?? null]));
-
-  return ids.map((id, i) => {
-    const p = people[i].Item ?? {};
-    return {
-      userId: id,
-      name: p.name ?? 'Unknown',
-      designation: p.designation ?? null,
-      organisation: p.organisation ?? null,
-      location: null,
-      bio: p.bio ?? null,
-      country: p.country ?? '',
-      primaryEmail: null,
-      secondaryEmail: null,
-      connectedAt: null,
-      degree: 2,
-      viaName: viaName.get(found.get(id)!) ?? null,
-    };
-  }).sort((x, y) => String(x.name).localeCompare(String(y.name)));
-}
-
 /**
  * The connections of one of the caller's direct contacts — the people they
  * could ask that contact to introduce them to.
@@ -774,8 +706,8 @@ async function secondDegree(userId: string) {
  * is the opposite of what the degree tiers exist for.
  *
  * Each person is returned with their degree relative to the CALLER, not to the
- * contact: someone already in the caller's own network is marked as such rather
- * than offered as an introduction they do not need.
+ * contact, and carries viaUserId so an introduction can be requested straight
+ * from the row.
  */
 async function connectionsOf(callerId: string, contactId: string) {
   const { Item: direct } = await ddb.send(new GetCommand({
@@ -803,7 +735,6 @@ async function connectionsOf(callerId: string, contactId: string) {
       name: p.name ?? 'Unknown',
       designation: p.designation ?? null,
       organisation: p.organisation ?? null,
-      // Already yours: full detail. Otherwise second degree, so masked.
       location: isDirect ? (p.location ?? null) : null,
       bio: p.bio ?? null,
       country: p.country ?? '',
@@ -813,8 +744,341 @@ async function connectionsOf(callerId: string, contactId: string) {
       connectedAt: null,
       degree: isDirect ? 1 : 2,
       viaName: isDirect ? null : contact.name,
+      viaUserId: isDirect ? null : contactId,
     };
   }).sort((x: any, y: any) => String(x.name).localeCompare(String(y.name)));
+}
+
+const SECOND_DEGREE_FAN_OUT = 60;
+
+/**
+ * Everyone one step beyond the caller's direct contacts.
+ *
+ * This is the one genuinely expensive read in the app: it queries each direct
+ * contact's connections, so it costs 1 + |contacts| queries. Resolving a SINGLE
+ * profile's degree does not work this way — that intersects two contact lists
+ * in two reads — but building the whole set has no such shortcut.
+ *
+ * So the fan-out is capped rather than unbounded. Past the cap the list is
+ * incomplete rather than slow, which is the better failure for a browsing view;
+ * the profile query stays exact, so nothing that matters is decided from a
+ * truncated set.
+ *
+ * Emails are omitted entirely here. The masked address belongs on the profile,
+ * where it is one person's detail, not sprayed across a list.
+ */
+async function secondDegree(userId: string, limit = 50, offset = 0) {
+  const mine = await connectionRows(userId);
+  if (mine.length === 0) return { items: [], total: 0, hasMore: false };
+  const direct = new Set(mine.map((r: any) => r.otherUserId));
+
+  const lists = await Promise.all(
+    mine.slice(0, SECOND_DEGREE_FAN_OUT).map(async (r: any) => ({
+      viaId: r.otherUserId,
+      rows: await connectionRows(r.otherUserId),
+    }))
+  );
+
+  // First contact to reach someone becomes the introducer shown for them.
+  const found = new Map<string, string>();
+  for (const { viaId, rows } of lists) {
+    for (const row of rows as any[]) {
+      const id = row.otherUserId;
+      if (id === userId || direct.has(id) || found.has(id)) continue;
+      found.set(id, viaId);
+    }
+  }
+  const total = found.size;
+  if (total === 0) return { items: [], total: 0, hasMore: false };
+
+  /**
+   * The set is derived, not stored, so it has to be rebuilt to be sliced — the
+   * membership above is cheap (ids only), and just the requested page is
+   * hydrated into profiles below. That keeps the expensive part proportional to
+   * the page, not the network.
+   *
+   * Ordering is by id rather than name because names are not loaded yet, and a
+   * page boundary has to be stable between requests or a member would see
+   * someone twice while never seeing someone else at all.
+   */
+  const ids = [...found.keys()].sort();
+  const page = ids.slice(offset, offset + limit);
+  if (page.length === 0) return { items: [], total, hasMore: false };
+
+  const viaIds = [...new Set(page.map((id) => found.get(id)!))];
+  const [people, vias] = await Promise.all([
+    Promise.all(page.map((id) => ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(id) })))),
+    Promise.all(viaIds.map(async (id) => ({
+      id, item: (await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(id) }))).Item,
+    }))),
+  ]);
+  const viaName = new Map(vias.map((v) => [v.id, v.item?.name ?? null]));
+
+  const items = page.map((id, i) => {
+    const p = people[i].Item ?? {};
+    return {
+      userId: id,
+      name: p.name ?? 'Unknown',
+      designation: p.designation ?? null,
+      organisation: p.organisation ?? null,
+      location: null,
+      bio: p.bio ?? null,
+      country: p.country ?? '',
+      primaryEmail: null,
+      secondaryEmail: null,
+      secondaryEmailUnverified: null,
+      connectedAt: null,
+      degree: 2,
+      viaName: viaName.get(found.get(id)!) ?? null,
+      viaUserId: found.get(id) ?? null,
+    };
+  }).sort((x, y) => String(x.name).localeCompare(String(y.name)));
+
+  return { items, total, hasMore: offset + page.length < total };
+}
+
+/**
+ * Asks a mutual connection to make an introduction (§3.5).
+ *
+ * The token is spent here, at the request, not at the introduction — the
+ * gatekeeper's attention is what is being paid for, and it is spent whether or
+ * not they say yes. It comes back if they decline, if the target declines, or
+ * if nobody responds within seven days.
+ *
+ * Both relationships are re-verified from the graph rather than trusted from
+ * the arguments: the caller must be connected to the gatekeeper, and the
+ * gatekeeper to the target. Otherwise anyone could name any pair and have the
+ * request delivered.
+ */
+async function requestIntroduction(userId: string, targetUserId: string, viaUserId: string) {
+  if (targetUserId === userId || viaUserId === userId) throw new Error('That is your own account.');
+  if (targetUserId === viaUserId) throw new Error('Pick someone your contact is connected to.');
+
+  const [{ Item: toVia }, { Item: viaToTarget }, { Item: alreadyMine }] = await Promise.all([
+    ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.connection(userId, viaUserId) })),
+    ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.connection(viaUserId, targetUserId) })),
+    ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.connection(userId, targetUserId) })),
+  ]);
+  if (!toVia) throw new Error('You are not connected to that person.');
+  if (!viaToTarget) throw new Error('They are not connected to the person you want to meet.');
+  if (alreadyMine) throw new Error('You are already connected.');
+
+  const [requester, gatekeeper, target] = await Promise.all([
+    loadProfile(userId), loadProfile(viaUserId), loadProfile(targetUserId),
+  ]);
+
+  const inviteId = randomUUID();
+  const createdAt = new Date().toISOString();
+  const expiresAt = k.inviteExpiryEpochSeconds();
+  const status = k.INVITE_STATUS.PENDING_GATEKEEPER;
+  const recipientEmail = k.normalizeEmail(target.primaryEmail);
+
+  try {
+    await ddb.send(new TransactWriteCommand({
+      TransactItems: [
+        {
+          Update: {
+            TableName: TABLE_NAME,
+            Key: k.user(userId),
+            UpdateExpression: 'ADD tokenBalance :neg',
+            ConditionExpression: 'attribute_exists(PK) AND tokenBalance >= :cost',
+            ExpressionAttributeValues: { ':neg': -INVITE_COST, ':cost': INVITE_COST },
+          },
+        },
+        {
+          Put: {
+            TableName: TABLE_NAME,
+            Item: {
+              ...k.invite(inviteId),
+              entityType: 'INVITE', inviteId, senderId: userId,
+              recipientEmail, recipientUserId: targetUserId,
+              gatekeeperId: viaUserId, targetUserId,
+              status, type: 'INTRO', tokenCharged: true, createdAt, expiresAt,
+              ...k.gsi1Outbox(userId, createdAt, inviteId),
+              ...k.gsi2Inbox(recipientEmail, status, createdAt),
+              ...k.gsi3InviteStatus(status, createdAt, inviteId),
+            },
+            ConditionExpression: 'attribute_not_exists(PK)',
+          },
+        },
+        {
+          Put: {
+            TableName: TABLE_NAME,
+            Item: {
+              ...k.transaction(userId, createdAt),
+              entityType: 'TXN', delta: -INVITE_COST,
+              reason: k.TXN_REASON.INTRO_REQUESTED, relatedId: inviteId,
+              actorId: userId, createdAt,
+            },
+          },
+        },
+      ],
+    }));
+  } catch (err: any) {
+    if (err?.name === 'TransactionCanceledException') {
+      throw new Error('You do not have enough tokens to request an introduction.');
+    }
+    throw err;
+  }
+
+  await send(gatekeeperEmail({
+    to: gatekeeper.primaryEmail,
+    gatekeeperName: gatekeeper.name,
+    requesterName: requester.name,
+    requesterLine: [requester.designation, requester.organisation].filter(Boolean).join(', '),
+    targetName: target.name,
+    targetLine: [target.designation, target.organisation].filter(Boolean).join(', '),
+  }));
+
+  return shapeInvite({ inviteId, recipientEmail, status, type: 'INTRO', createdAt, expiresAt });
+}
+
+/** Requests the caller must decide on, as the mutual connection. */
+async function gatekeeperRequests(userId: string) {
+  const { Items = [] } = await ddb.send(new QueryCommand({
+    TableName: TABLE_NAME,
+    IndexName: 'GSI3',
+    KeyConditionExpression: 'GSI3PK = :pk',
+    ExpressionAttributeValues: { ':pk': `INVITE_STATUS#${k.INVITE_STATUS.PENDING_GATEKEEPER}` },
+    ScanIndexForward: false,
+    Limit: 50,
+  }));
+  const keys = Items.map((i: any) => ({ PK: i.PK, SK: i.SK }));
+  if (keys.length === 0) return [];
+  const full = await Promise.all(keys.map((key) => ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: key }))));
+  const mine = full.map((r) => r.Item).filter((i: any) => i && i.gatekeeperId === userId) as any[];
+  if (mine.length === 0) return [];
+
+  const profiles = await Promise.all(mine.flatMap((i) => [
+    ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(i.senderId) })),
+    ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(i.targetUserId) })),
+  ]));
+  const now = Math.floor(Date.now() / 1000);
+  return mine.map((i, idx) => {
+    const req = profiles[idx * 2].Item ?? {};
+    const tgt = profiles[idx * 2 + 1].Item ?? {};
+    return {
+      inviteId: i.inviteId, status: i.status, createdAt: i.createdAt,
+      daysLeft: i.expiresAt ? Math.max(0, Math.ceil((Number(i.expiresAt) - now) / 86400)) : null,
+      requesterName: req.name ?? 'Unknown',
+      requesterDesignation: [req.designation, req.organisation].filter(Boolean).join(' · ') || null,
+      requesterUserId: i.senderId,
+      targetName: tgt.name ?? 'Unknown',
+      targetDesignation: [tgt.designation, tgt.organisation].filter(Boolean).join(' · ') || null,
+      targetUserId: i.targetUserId,
+    };
+  });
+}
+
+async function loadGatekeeperInvite(userId: string, inviteId: string) {
+  const { Item: inv } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.invite(inviteId) }));
+  if (!inv) throw new Error('That request no longer exists.');
+  if (inv.gatekeeperId !== userId) throw new Error('That request is not yours to decide.');
+  return inv;
+}
+
+/** Approving forwards the request to the target; the token stays spent. */
+async function approveIntroduction(userId: string, inviteId: string) {
+  const inv = await loadGatekeeperInvite(userId, inviteId);
+  if (inv.status === k.INVITE_STATUS.INTRO_PENDING) return shapeInvite(inv);
+  if (inv.status !== k.INVITE_STATUS.PENDING_GATEKEEPER) {
+    throw new Error(`That request was already ${String(inv.status).toLowerCase().replace(/_/g, ' ')}.`);
+  }
+
+  const status = k.INVITE_STATUS.INTRO_PENDING;
+  await ddb.send(new UpdateCommand({
+    TableName: TABLE_NAME,
+    Key: k.invite(inviteId),
+    UpdateExpression: 'SET #s = :s, approvedAt = :now, GSI2SK = :g2, GSI3PK = :g3pk, GSI3SK = :g3sk',
+    ConditionExpression: 'attribute_exists(PK) AND #s = :prev',
+    ExpressionAttributeNames: { '#s': 'status' },
+    ExpressionAttributeValues: {
+      ':s': status, ':prev': inv.status, ':now': new Date().toISOString(),
+      ':g2': `${status}#${inv.createdAt}`,
+      ':g3pk': `INVITE_STATUS#${status}`,
+      ':g3sk': `${inv.createdAt}#${inviteId}`,
+    },
+  }));
+
+  const [requester, gatekeeper] = await Promise.all([loadProfile(inv.senderId), loadProfile(userId)]);
+  await send(introForwardEmail({
+    to: inv.recipientEmail,
+    requesterName: requester.name,
+    requesterLine: [requester.designation, requester.organisation].filter(Boolean).join(', '),
+    requesterBio: requester.bio ?? null,
+    gatekeeperName: gatekeeper.name,
+    inviteId,
+  }));
+
+  return shapeInvite({ ...inv, status });
+}
+
+/** Declining ends it and returns the requester's token. */
+async function declineIntroduction(userId: string, inviteId: string) {
+  const inv = await loadGatekeeperInvite(userId, inviteId);
+  if (inv.status === k.INVITE_STATUS.GATEKEEPER_DENIED) return shapeInvite(inv);
+  if (inv.status !== k.INVITE_STATUS.PENDING_GATEKEEPER) {
+    throw new Error(`That request was already ${String(inv.status).toLowerCase().replace(/_/g, ' ')}.`);
+  }
+
+  const now = new Date().toISOString();
+  const status = k.INVITE_STATUS.GATEKEEPER_DENIED;
+  await ddb.send(new TransactWriteCommand({
+    TransactItems: [
+      {
+        Put: {
+          TableName: TABLE_NAME,
+          Item: { ...k.inviteRefundMarker(inviteId), entityType: 'INVITE_REFUND', refundedAt: now, reason: status },
+          ConditionExpression: 'attribute_not_exists(PK)',
+        },
+      },
+      {
+        Update: {
+          TableName: TABLE_NAME,
+          Key: k.invite(inviteId),
+          UpdateExpression: 'SET #s = :s, GSI2SK = :g2, GSI3PK = :g3pk, GSI3SK = :g3sk REMOVE expiresAt',
+          ConditionExpression: 'attribute_exists(PK) AND #s = :prev',
+          ExpressionAttributeNames: { '#s': 'status' },
+          ExpressionAttributeValues: {
+            ':s': status, ':prev': inv.status,
+            ':g2': `${status}#${inv.createdAt}`,
+            ':g3pk': `INVITE_STATUS#${status}`,
+            ':g3sk': `${inv.createdAt}#${inviteId}`,
+          },
+        },
+      },
+      {
+        Update: {
+          TableName: TABLE_NAME, Key: k.user(inv.senderId),
+          UpdateExpression: 'ADD tokenBalance :one',
+          ConditionExpression: 'attribute_exists(PK)',
+          ExpressionAttributeValues: { ':one': 1 },
+        },
+      },
+      {
+        Put: {
+          TableName: TABLE_NAME,
+          Item: {
+            ...k.transaction(inv.senderId, now),
+            entityType: 'TXN', delta: 1,
+            reason: k.TXN_REASON.REFUND_GATEKEEPER_DENIED, relatedId: inviteId,
+            actorId: 'SYSTEM', createdAt: now,
+          },
+        },
+      },
+    ],
+  }));
+
+  // The requester is told the answer, never who gave it or why.
+  const sender = await loadProfile(inv.senderId);
+  const target = await loadProfile(inv.targetUserId);
+  if (sender.primaryEmail) {
+    await send(refundEmail({
+      to: sender.primaryEmail, recipientEmail: target.name, reason: 'GATEKEEPER_DENIED',
+    }));
+  }
+  await bumpCounter(k.statsGlobal(now.slice(0, 10)), 'ADD tokensRefunded :one', { ':one': 1 });
+  return shapeInvite({ ...inv, status });
 }
 
 export const handler = async (event: AppSyncResolverEvent<any>) => {
@@ -825,7 +1089,11 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
   switch (field) {
     case 'me': return me(userId);
     case 'myConnections': return myConnections(userId);
-    case 'secondDegree': return secondDegree(userId);
+    case 'secondDegree': return secondDegree(userId, args.limit ?? 50, args.offset ?? 0);
+    case 'gatekeeperRequests': return gatekeeperRequests(userId);
+    case 'requestIntroduction': return requestIntroduction(userId, args.targetUserId, args.viaUserId);
+    case 'approveIntroduction': return approveIntroduction(userId, args.inviteId);
+    case 'declineIntroduction': return declineIntroduction(userId, args.inviteId);
     case 'myInvitations': return myInvitations(userId);
     case 'tokenPrice': return tokenPrice(userId);
     case 'invitation': return invitation(userId, args.inviteId);

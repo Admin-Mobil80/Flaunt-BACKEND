@@ -105,6 +105,8 @@ h1.big { margin:0; font-family:var(--serif); font-size:clamp(26px,4vw,32px); fon
 .lrow { display:grid; align-items:center; gap:14px; padding:10px 0;
   border-bottom:1px solid var(--rule); }
 .lrow:hover { background:var(--sunk); }
+.lrow-click { cursor:pointer; }
+.lrow-click:focus-visible { outline:2px solid var(--accent); outline-offset:-2px; }
 .trunc { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .rowbtn { background:none; border:1px solid var(--rule-2); color:var(--ink-soft);
   font-size:11.5px; padding:4px 9px; opacity:0; transition:opacity .12s; }
@@ -255,7 +257,9 @@ function reset() {
   S = { balance:10, bio:SEED_BIO, invFilter:'all', bmsFilter:'ALL', modal:null, toast:null,
         invites:[],
         connected:{}, introAsked:false,
-        me:null, connections:[], second:[], invites:[], price:null,
+        me:null, connections:[], invites:[], price:null, netTab:'direct', netFilter:'',
+        second:[], secondTotal:0, secondOffset:0, secondHasMore:false, secondLoading:false, secondError:null,
+        gatekeeper:null, gkLoading:false, gkError:null,
         loading:false, dataError:null, landed:false, newVersion:false, sending:false,
         stats:null, users:[], adminInvites:[], pricing:null, payment:null, saving:false, profileError:null,
         pendingInvite:null, inviteError:null, responding:false, profileDraft:null, viewing:null,
@@ -406,57 +410,91 @@ function vWelcome() {
 }
 
 function vNetwork() {
-  const rows = S.connections.map((p) => {
+  const q = (S.netFilter || '').trim().toLowerCase();
+  const matches = (p) => !q || [p.name, p.designation, p.organisation, p.location, p.viaName]
+    .filter(Boolean).some((f) => String(f).toLowerCase().includes(q));
+
+  const tab = S.netTab === 'second' ? 'second' : 'direct';
+  if (tab === 'second' && S.second.length === 0 && !S.secondLoading && !S.secondError) loadSecond(0);
+
+  const direct = S.connections.filter(matches);
+  const second = S.second.filter(matches);
+
+  // The whole row is the target — a name-only hit area is a small thing to aim
+  // at when everything in the row is about the same person.
+  const row = (p, isSecond) => {
     const role = [p.designation, p.organisation].filter(Boolean).join(' · ');
-    return `<div class="lrow" style="grid-template-columns:26px minmax(120px,1.1fr) minmax(0,1.4fr) 78px auto;">
-      <span class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initialsOf(p.name)}</span>
-      <button onclick="go('#/p/${p.userId}')" class="trunc" title="${esc(p.name)}"
-        style="background:none;border:none;padding:0;text-align:left;font-family:var(--serif);font-size:15.5px;color:var(--ink);">${esc(p.name)}</button>
-      <span class="trunc hide-sm" style="font-size:12.5px;color:var(--ink-soft);" title="${esc(role)}">${esc(role || '—')}</span>
-      <span class="hide-sm" style="font-size:11.5px;color:var(--faint);text-align:right;"
-        title="${p.connectionCount} direct connection${p.connectionCount===1?'':'s'}">
-        <span class="mono" style="color:var(--ink-soft);">${p.connectionCount}</span> conn.</span>
-      <span style="display:flex;align-items:center;gap:8px;justify-content:flex-end;">
-        <button class="rowbtn" onclick="removeConnection('${p.userId}','${esc(p.name)}')">Remove</button>
-        <button onclick="go('#/p/${p.userId}')" aria-label="Open ${esc(p.name)}"
-          style="background:none;border:none;padding:0;color:var(--ghost);display:flex;">${CHEV}</button>
-      </span>
+    return `<div class="lrow lrow-click" onclick="go('#/p/${p.userId}')" role="link" tabindex="0"
+        onkeydown="if(event.key==='Enter')go('#/p/${p.userId}')"
+        style="grid-template-columns:26px minmax(110px,1.05fr) minmax(0,1.35fr) ${isSecond ? 'minmax(0,132px)' : '78px'} 22px;">
+      <span class="avatar" style="width:26px;height:26px;font-size:10.5px;${isSecond ? 'background:#F3EDE4;' : ''}">${initialsOf(p.name)}</span>
+      <span class="trunc" style="font-family:var(--serif);font-size:15.5px;">${esc(p.name)}</span>
+      <span class="trunc hide-sm" style="font-size:12.5px;color:var(--ink-soft);">${esc(role || '—')}</span>
+      ${isSecond
+        ? `<span class="trunc hide-sm" style="font-size:12px;color:var(--faint);text-align:right;">${esc(p.viaName || '—')}</span>`
+        : `<span class="hide-sm mono" style="font-size:12px;color:var(--ink-soft);text-align:right;">${p.connectionCount}</span>`}
+      <span style="color:var(--ghost);display:flex;justify-content:flex-end;">${CHEV}</span>
     </div>`;
-  }).join('');
+  };
+
+  const header = (isSecond) => `<div class="lrow hide-sm" style="grid-template-columns:26px minmax(110px,1.05fr) minmax(0,1.35fr) ${isSecond ? 'minmax(0,132px)' : '78px'} 22px;border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
+      <span></span><span class="lbl">Name</span><span class="lbl">Role</span>
+      <span class="lbl" style="text-align:right;">${isSecond ? 'Through' : 'Connections'}</span><span></span>
+    </div>`;
+
+  const tabBtn = (id, label, n) => {
+    const on = tab === id;
+    return `<button onclick="S.netTab='${id}';render();" aria-current="${on}"
+      style="background:none;border:none;border-bottom:1.5px solid ${on ? 'var(--accent)' : 'transparent'};
+        color:${on ? 'var(--ink)' : 'var(--ink-soft)'};font-weight:${on ? 500 : 400};font-size:13.5px;
+        padding:0 0 10px;display:flex;align-items:center;gap:7px;">
+      ${label}<span class="mono" style="font-size:11px;color:var(--faint);">${n}</span></button>`;
+  };
+
   return topbar('network') + `<div class="wrap"><div class="col">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <h1 class="big">Your network</h1>
-      <span style="font-size:13px;color:var(--ink-soft);">${S.connections.length} direct${S.second.length ? ` · ${S.second.length} within reach` : ''}</span>
-    </div>
-    <div style="display:flex;align-items:center;gap:11px;border:1px solid var(--rule);background:var(--sunk);padding:11px 14px;">
-      <span style="color:var(--ghost);display:flex;">${SEARCH}</span>
-      <span style="font-size:13.5px;color:var(--faint);">Search is not available yet</span>
-    </div>
-    <div style="display:flex;flex-direction:column;">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:11px;border-bottom:1px solid var(--rule-2);">
-        <span class="lbl">Direct connections</span>
-        <button onclick="openInvite()" style="background:none;border:none;padding:0;font-size:12.5px;color:var(--accent);">+ Invite someone</button>
-      </div>
-      ${rows}
+      <button onclick="openInvite()" style="background:none;border:none;padding:0;font-size:12.5px;color:var(--accent);">+ Invite someone</button>
     </div>
 
-    ${S.second.length ? `<div style="display:flex;flex-direction:column;margin-top:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:9px;border-bottom:1px solid var(--rule-2);">
-        <span class="lbl">Second degree</span>
-        <span class="lbl">Through</span>
-      </div>
-      ${S.second.map((sp) => {
-        const srole = [sp.designation, sp.organisation].filter(Boolean).join(' · ');
-        return `<div class="lrow" style="grid-template-columns:26px minmax(120px,1.1fr) minmax(0,1.4fr) auto;">
-          <span class="avatar" style="width:26px;height:26px;font-size:10.5px;background:#F3EDE4;">${initialsOf(sp.name)}</span>
-          <button onclick="go('#/p/${sp.userId}')" class="trunc" title="${esc(sp.name)}"
-            style="background:none;border:none;padding:0;text-align:left;font-family:var(--serif);font-size:15.5px;color:var(--ink);">${esc(sp.name)}</button>
-          <span class="trunc hide-sm" style="font-size:12.5px;color:var(--ink-soft);" title="${esc(srole)}">${esc(srole || '—')}</span>
-          <span class="trunc" style="font-size:12px;color:var(--faint);text-align:right;max-width:150px;" title="${esc(sp.viaName || '')}">${esc(sp.viaName || '—')}</span>
-        </div>`;
-      }).join('')}
-      <span style="font-size:11.5px;color:var(--faint);padding-top:10px;">Their email addresses stay masked until you are directly connected.</span>
+    <div style="display:flex;gap:24px;border-bottom:1px solid var(--rule-2);flex-wrap:wrap;">
+      ${tabBtn('direct', 'Direct', S.connections.length)}
+      ${tabBtn('second', 'Second degree', S.secondTotal || '—')}
+    </div>
+
+    ${(S.connections.length > 8 || S.second.length > 8) ? `<div style="display:flex;align-items:center;gap:11px;border:1px solid var(--rule-2);background:var(--raised);padding:10px 13px;">
+      <span style="color:var(--faint);display:flex;">${SEARCH}</span>
+      <input id="net-filter" value="${esc(S.netFilter || '')}" oninput="S.netFilter=this.value;render();"
+        placeholder="Filter the loaded rows by name, role, company or introducer"
+        style="border:none;outline:none;background:none;font-size:13.5px;width:100%;font-family:inherit;color:var(--ink);">
+      ${q ? `<button onclick="S.netFilter='';render();" style="background:none;border:none;color:var(--faint);font-size:16px;padding:0 2px;">&times;</button>` : ''}
     </div>` : ''}
+
+    ${tab === 'direct' ? `<div style="display:flex;flex-direction:column;">
+      ${S.connections.length ? header(false) : ''}
+      ${direct.length ? direct.map((p) => row(p, false)).join('') : (
+        S.connections.length
+          ? `<p style="margin:20px 0;font-size:13.5px;color:var(--faint);">No direct connection matches “${esc(q)}”.</p>`
+          : emptyState('No connections yet',
+              'Your network is built one invitation at a time. Nobody is suggested to you and nothing is imported.',
+              `<button class="btn" onclick="openInvite()">Send your first invitation</button>`))}
+    </div>` : `<div style="display:flex;flex-direction:column;">
+      ${S.secondError ? `<p style="margin:16px 0;font-size:13px;color:var(--bad);">${esc(S.secondError)}</p>` : ''}
+      ${S.second.length ? header(true) : ''}
+      ${second.length ? second.map((p) => row(p, true)).join('') : (
+        S.secondLoading ? `<p style="margin:20px 0;font-size:13.5px;color:var(--ink-soft);">Loading…</p>`
+        : (S.second.length
+            ? `<p style="margin:20px 0;font-size:13.5px;color:var(--faint);">Nobody loaded matches “${esc(q)}”.</p>`
+            : emptyState('Nobody within reach yet',
+                'Once your connections have connections of their own, they appear here — and you can ask to be introduced.', '')))}
+
+      ${S.second.length ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-top:14px;flex-wrap:wrap;">
+        <span style="font-size:12px;color:var(--faint);">Showing ${S.second.length} of ${S.secondTotal}${q ? ` · ${second.length} match the filter` : ''}</span>
+        ${S.secondHasMore ? `<button class="btn ghost" ${S.secondLoading ? 'disabled' : ''} onclick="loadSecond(${S.secondOffset})"
+          style="padding:8px 16px;font-size:13px;">${S.secondLoading ? 'Loading…' : 'Load more'}</button>` : ''}
+      </div>
+      <span style="font-size:11.5px;color:var(--faint);padding-top:8px;">The filter searches the rows you have loaded, not the whole network.</span>` : ''}
+    </div>`}
   </div></div>`;
 }
 
@@ -469,8 +507,8 @@ async function loadTheirConnections(userId) {
   render();
   try {
     const d = await gql(`query C($id:ID!){ connectionsOf(userId:$id){
-      userId name designation organisation degree viaName } }`, { id: userId });
-    S.viewing = { ...S.viewing, theirs: d.connectionsOf || [], theirsLoading: false };
+      userId name designation organisation degree viaName viaUserId } }`, { id: userId });
+    S.viewing = { ...S.viewing, theirs: d.connectionsOf || [], theirsLoading: false, theirsError: null };
   } catch (e) {
     S.viewing = { ...S.viewing, theirs: [], theirsLoading: false, theirsError: e.message };
   }
@@ -489,6 +527,41 @@ async function openProfile(userId) {
     S.viewing = { loading: false, userId, profile: null, error: e.message };
   }
   render();
+}
+
+function vGatekeeperInbox() {
+  if (S.gatekeeper === null && !S.gkLoading && !S.gkError) loadGatekeeper();
+  const rs = S.gatekeeper || [];
+  return topbar('invitations') + `<div class="wrap"><div class="col" style="max-width:700px;gap:26px;">
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      <h1 class="big">Introduction requests</h1>
+      <p style="margin:0;font-size:14px;color:var(--ink-soft);">People you know asking to be introduced to other people you know.</p>
+    </div>
+    ${S.gkError ? `<p style="font-size:13px;color:var(--bad);">${esc(S.gkError)}</p>` : ''}
+    ${S.gkLoading ? `<p style="font-size:13.5px;color:var(--ink-soft);">Loading…</p>` : ''}
+    ${!S.gkLoading && rs.length === 0 ? emptyState('Nothing waiting on you',
+      'When someone you know asks to be introduced to another of your connections, it appears here.', '') : ''}
+    ${rs.map((r) => `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:22px 24px;display:flex;flex-direction:column;gap:16px;">
+      <span class="serif" style="font-size:19px;line-height:1.35;">${esc(r.requesterName)} would like an introduction to ${esc(r.targetName)}.</span>
+      <div class="grid2">
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <span class="lbl">Asking</span>
+          <span style="font-size:13.5px;">${esc(r.requesterName)}</span>
+          <span style="font-size:12.5px;color:var(--ink-soft);">${esc(r.requesterDesignation || '—')}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <span class="lbl">Would be asked</span>
+          <span style="font-size:13.5px;">${esc(r.targetName)}</span>
+          <span style="font-size:12.5px;color:var(--ink-soft);">${esc(r.targetDesignation || '—')}</span>
+        </div>
+      </div>
+      <p style="margin:0;font-size:12.5px;color:var(--ink-soft);line-height:1.6;">${esc(r.targetName)} hears nothing unless you approve. If you decline, ${esc(r.requesterName)} is told you passed &mdash; not why &mdash; and their token is returned.${r.daysLeft !== null ? ` ${r.daysLeft} day${r.daysLeft === 1 ? '' : 's'} left.` : ''}</p>
+      <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+        <button class="btn" onclick="decideIntroduction('${r.inviteId}',true,'${esc(r.requesterName)}','${esc(r.targetName)}')">Approve introduction</button>
+        <button class="btn ghost" onclick="decideIntroduction('${r.inviteId}',false,'${esc(r.requesterName)}','${esc(r.targetName)}')">Decline</button>
+      </div>
+    </div>`).join('')}
+  </div></div>`;
 }
 
 function vProfile(id) {
@@ -563,9 +636,16 @@ function vProfile(id) {
       ${contact}
     </div>
 
-    ${second ? `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:24px 26px;display:flex;flex-direction:column;gap:14px;">
-      ${p.viaName ? `<span style="font-size:13.5px;color:var(--ink-2);">Connected through <strong style="font-weight:500;">${esc(p.viaName)}</strong></span>` : ''}
-      <span style="font-size:12.5px;color:var(--faint);">Introductions are not built yet.</span>
+    ${second && p.viaUserId ? `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:24px 26px;display:flex;flex-direction:column;gap:18px;">
+      <div style="display:flex;align-items:center;gap:11px;">
+        <span class="avatar" style="width:30px;height:30px;font-size:12px;">${initialsOf(p.viaName || '')}</span>
+        <span style="font-size:13.5px;color:var(--ink-2);">Connected through <strong style="font-weight:500;">${esc(p.viaName)}</strong></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+        <button class="btn" onclick="requestIntroduction('${p.userId}','${esc(p.name)}','${p.viaUserId}','${esc(p.viaName)}')">
+          <span style="display:flex;">${COIN}</span>Ask ${esc((p.viaName || '').split(' ')[0])} to introduce you &mdash; 1 token</button>
+        <span style="font-size:12.5px;color:var(--ink-soft);line-height:1.5;max-width:34ch;">${esc((p.viaName || '').split(' ')[0])} decides first. If they pass, or ${esc((p.name || '').split(' ')[0])} does not respond within 7 days, your token comes back.</span>
+      </div>
     </div>` : ''}
 
     ${p.degree === 1 ? `<div style="display:flex;flex-direction:column;gap:0;border-top:1px solid var(--rule-2);padding-top:22px;">
@@ -584,10 +664,17 @@ function vProfile(id) {
           <span class="trunc hide-sm" style="font-size:12.5px;color:var(--ink-soft);">${esc(crole || '—')}</span>
           <span style="text-align:right;">${c.degree === 1
             ? `<span class="lbl" style="color:var(--good);">Connected</span>`
-            : `<span class="lbl" style="color:var(--warn);">2nd degree</span>`}</span>
+            : `<button onclick="event.stopPropagation();requestIntroduction('${c.userId}','${esc(c.name)}','${c.viaUserId || p.userId}','${esc(p.name)}')"
+                style="background:none;border:1px solid var(--rule-2);color:var(--accent);font-size:11.5px;padding:4px 10px;">Introduce</button>`}</span>
         </div>`;
       }).join('') : (v.theirs && v.theirs.length === 0 ? `<p style="margin:12px 0;font-size:13px;color:var(--faint);">They have no other connections yet.</p>` : '')}
       ${v.theirsError ? `<p style="margin:12px 0;font-size:12.5px;color:var(--bad);">${esc(v.theirsError)}</p>` : ''}
+    </div>` : ''}
+
+    ${p.degree === 1 ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid var(--rule);padding-top:20px;flex-wrap:wrap;">
+      <span style="font-size:12.5px;color:var(--ink-soft);max-width:46ch;line-height:1.55;">Removing takes the connection away for you both. Your token is not returned &mdash; it paid for an introduction that happened.</span>
+      <button class="btn ghost" onclick="removeConnection('${p.userId}','${esc(p.name)}')"
+        style="padding:9px 16px;font-size:13px;">Remove connection</button>
     </div>` : ''}
 
     ${p.degree === 1 && p.connectedAt ? `<div style="display:flex;align-items:center;gap:9px;border-top:1px solid var(--rule);padding-top:20px;">
@@ -632,6 +719,7 @@ function vInvitations() {
   return topbar('invitations') + `<div class="wrap"><div class="col wide" style="gap:26px;">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <h1 class="big">Invitations</h1>
+      <button onclick="go('#/gatekeeper')" style="background:none;border:none;padding:0;font-size:12.5px;color:var(--accent);">Introduction requests &rarr;</button>
       ${refunded ? `<div style="display:flex;align-items:center;gap:8px;color:var(--good);">
         ${RETURN}<span style="font-size:13px;">${refunded} token${refunded===1?'':'s'} returned to you</span></div>` : ''}
     </div>
@@ -1048,7 +1136,6 @@ async function gql(query, variables) {
 const Q_PORTAL = `query Portal {
   me { userId name email designation organisation location bio country tokenBalance createdAt connectionCount secondaryEmail }
   myConnections { userId name designation organisation location connectedAt connectionCount }
-  secondDegree { userId name designation organisation viaName }
   myInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome }
   tokenPrice { currency symbol tokens baseMinor taxMinor totalMinor taxLabel baseDisplay taxDisplay totalDisplay }
 }`;
@@ -1064,7 +1151,7 @@ async function loadPortal() {
     const d = await gql(Q_PORTAL);
     S.me = d.me;
     S.connections = d.myConnections || [];
-    S.second = d.secondDegree || [];
+    // second degree is paged separately
     S.invites = d.myInvitations || [];
     S.price = d.tokenPrice;
     if (!S.landed) {
@@ -1247,7 +1334,9 @@ async function removeConnection(userId, name) {
   if (!confirm('Remove ' + name + ' from your network?\n\nYou will both lose access to each other\u2019s contact details. Your token is not returned — it paid for an introduction that happened.')) return;
   try {
     await gql(`mutation Rm($id:ID!){ removeConnection(userId:$id) }`, { id: userId });
+    S.viewing = null; S.second = []; S.secondOffset = 0;
     await refreshPortal();
+    go('#/network');
     toast(name + ' removed from your network.');
   } catch (e) { toast(e.message); }
 }
@@ -1258,6 +1347,56 @@ async function cancelInvite(inviteId, email) {
     await gql(`mutation Cancel($id:ID!){ cancelInvitation(inviteId:$id){ inviteId status } }`, { id: inviteId });
     await refreshPortal();
     toast('Invitation cancelled — your token has been returned.');
+  } catch (e) { toast(e.message); }
+}
+
+const SECOND_PAGE = 50;
+
+/** Fetches one page of the second degree. Thousands of contacts cannot arrive at once. */
+async function loadSecond(offset = 0) {
+  S.secondLoading = true; render();
+  try {
+    const d = await gql(`query S($l:Int!,$o:Int!){ secondDegree(limit:$l, offset:$o){
+      items { userId name designation organisation viaName viaUserId } total hasMore } }`,
+      { l: SECOND_PAGE, o: offset });
+    const page = d.secondDegree;
+    S.second = offset === 0 ? page.items : [...S.second, ...page.items];
+    S.secondTotal = page.total;
+    S.secondHasMore = page.hasMore;
+    S.secondOffset = offset + page.items.length;
+  } catch (e) { S.secondError = e.message; }
+  finally { S.secondLoading = false; render(); }
+}
+
+async function requestIntroduction(targetUserId, targetName, viaUserId, viaName) {
+  if (!confirm(`Ask ${viaName} to introduce you to ${targetName}?\n\nThis costs 1 token now. It comes back if ${viaName} declines, if ${targetName} declines, or if nobody responds within 7 days.`)) return;
+  try {
+    await gql(`mutation I($t:ID!,$v:ID!){ requestIntroduction(targetUserId:$t, viaUserId:$v){ inviteId status } }`,
+      { t: targetUserId, v: viaUserId });
+    await refreshPortal();
+    toast(`Asked ${viaName}. You will hear back either way.`);
+    go('#/invitations');
+  } catch (e) { toast(e.message); }
+}
+
+async function loadGatekeeper() {
+  S.gkLoading = true; render();
+  try {
+    const d = await gql(`query { gatekeeperRequests {
+      inviteId createdAt daysLeft requesterName requesterDesignation requesterUserId
+      targetName targetDesignation targetUserId } }`);
+    S.gatekeeper = d.gatekeeperRequests || [];
+  } catch (e) { S.gkError = e.message; }
+  finally { S.gkLoading = false; render(); }
+}
+
+async function decideIntroduction(inviteId, approve, requesterName, targetName) {
+  const op = approve ? 'approveIntroduction' : 'declineIntroduction';
+  if (!approve && !confirm(`Decline the introduction between ${requesterName} and ${targetName}?\n\n${requesterName} is told you passed, not why, and their token is returned.`)) return;
+  try {
+    await gql(`mutation D($i:ID!){ ${op}(inviteId:$i){ inviteId status } }`, { i: inviteId });
+    await loadGatekeeper();
+    toast(approve ? `Introduced. ${targetName} has been emailed.` : 'Declined. Their token has been returned.');
   } catch (e) { toast(e.message); }
 }
 
@@ -1691,6 +1830,7 @@ function view() {
   if (h === '#/signup') return vSignup();
   if (h === '#/welcome') return vWelcome();
   if (h === '#/invite') return vInviteResponse();
+  if (h === '#/gatekeeper') return vGatekeeperInbox();
   if (h === '#/start') return vFirstRun();
   if (h === '#/profile') return vProfileEdit();
   if (h === '#/invitations') return vInvitations();
@@ -1737,6 +1877,14 @@ function render() {
   // steal the caret back while they are mid-type.
   const code = document.getElementById('auth-code');
   if (code && document.activeElement !== code) code.focus();
+
+  // The filter re-renders on every keystroke, which destroys the input it was
+  // typed into. Restore focus and caret so typing is not interrupted.
+  const nf = document.getElementById('net-filter');
+  if (nf && S.netFilter && document.activeElement !== nf) {
+    nf.focus();
+    nf.setSelectionRange(nf.value.length, nf.value.length);
+  }
 }
 addEventListener('hashchange', render);
 watchForNewVersion();
