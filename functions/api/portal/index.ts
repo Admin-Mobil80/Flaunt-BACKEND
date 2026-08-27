@@ -44,6 +44,7 @@ async function me(userId: string) {
     organisation: p.organisation ?? null,
     location: p.location ?? null,
     bio: p.bio ?? null,
+    secondaryEmail: p.secondaryEmail ?? null,
     country: p.country,
     tokenBalance: p.tokenBalance ?? 0,
     createdAt: p.createdAt,

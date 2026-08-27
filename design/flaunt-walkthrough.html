@@ -790,7 +790,7 @@ async function setBundleSize(tokens) {
 
 /* ---------- BMS ---------- */
 function bmsShell(active, inner) {
-  const nav = [['users','User ledger'],['invitations','Invitations']].map(([k,l]) =>
+  const nav = [['users','User ledger'],['invitations','Invitations'],['settings','Settings']].map(([k,l]) =>
     `<button onclick="go('#/bms/${k}')" ${active===k?'aria-current="true"':''}>${l}</button>`).join('');
   return `<div class="bms">
     <header class="bms-top">
@@ -828,19 +828,6 @@ function vBmsUsers() {
       <button class="step" onclick="adjustTokens('${u.userId}',1)" aria-label="Add a token for ${esc(u.name)}">+</button>
     </span></td></tr>`).join('');
 
-  // The active value has to be unmistakable — this is the number that decides
-  // what a customer gets for their money, and a subtly-tinted pill is not
-  // enough to tell at a glance which one is in force.
-  const sizes = (pc ? pc.allowedSizes : [25,50,75,100]).map((n) => {
-    const on = pc && pc.tokensPerBundle === n;
-    return `<button onclick="setBundleSize(${n})" aria-current="${on}"
-      style="min-width:62px;padding:9px 14px;font-size:14px;font-weight:${on?700:500};cursor:pointer;
-        border:1.5px solid ${on?'var(--bms-accent)':'var(--bms-rule-2)'};
-        background:${on?'var(--bms-accent)':'var(--bms-panel)'};
-        color:${on?'#FFFFFF':'var(--bms-soft)'};
-        display:inline-flex;align-items:center;justify-content:center;gap:7px;">
-      ${on ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12.5 L10 17.5 L19 7"/></svg>` : ''}${n}</button>`;
-  }).join('');
 
   return bmsShell('users', `
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
@@ -855,7 +842,35 @@ function vBmsUsers() {
       <div><span class="lbl">Users · India</span><span class="mono" style="font-size:19px;font-weight:600;">${st.usersIndia}</span></div>
       <div><span class="lbl">Users · International</span><span class="mono" style="font-size:19px;font-weight:600;">${st.usersInternational}</span></div>
       <div><span class="lbl">Tokens outstanding</span><span class="mono" style="font-size:19px;font-weight:600;">${st.tokensOutstanding}</span></div>
-      <div><span class="lbl">Tokens per $5.00</span><span class="mono" style="font-size:19px;font-weight:600;color:var(--bms-accent);">${pc ? pc.tokensPerBundle : '—'}</span></div>
+      <div><span class="lbl">Refunded tokens</span><span class="mono" style="font-size:19px;font-weight:600;color:var(--bms-good);">${st.tokensRefunded ?? '—'}</span></div>
+    </div>
+
+    ${S.users.length ? `<div class="tblwrap"><table>
+      <thead><tr><th>Name</th><th>Primary email</th><th>Country</th><th>Tokens</th><th>Connections</th><th>Joined</th><th>Adjust balance</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>` : `<div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:30px;font-size:13px;color:var(--bms-mute);">No accounts yet. The first sign-up on flaunt.network will appear here.</div>`}
+
+    <p style="margin:0;font-size:11.5px;color:var(--bms-mute);">Every adjustment is written to the user&rsquo;s token ledger with your address as the actor.</p>`);
+}
+
+function vBmsSettings() {
+  const pc = S.pricing;
+  // The active value has to be unmistakable — this is the number that decides
+  // what a customer gets for their money.
+  const sizes = (pc ? pc.allowedSizes : [25,50,75,100]).map((n) => {
+    const on = pc && pc.tokensPerBundle === n;
+    return `<button onclick="setBundleSize(${n})" aria-current="${on}"
+      style="min-width:62px;padding:9px 14px;font-size:14px;font-weight:${on?700:500};cursor:pointer;
+        border:1.5px solid ${on?'var(--bms-accent)':'var(--bms-rule-2)'};
+        background:${on?'var(--bms-accent)':'var(--bms-panel)'};
+        color:${on?'#FFFFFF':'var(--bms-soft)'};
+        display:inline-flex;align-items:center;justify-content:center;gap:7px;">
+      ${on ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12.5 L10 17.5 L19 7"/></svg>` : ''}${n}</button>`;
+  }).join('');
+  return bmsShell('settings', `
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <h1 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em;">Settings</h1>
+      <span style="font-size:12px;color:var(--bms-mute);">Platform-wide. Changes take effect immediately and are written to the ledger with your address.</span>
     </div>
 
     ${(function () {
@@ -917,12 +932,7 @@ function vBmsUsers() {
       ${pc && pc.updatedAt ? `<span style="font-size:11px;color:var(--bms-mute);">Last changed ${esc(String(pc.updatedAt).slice(0,16).replace('T',' '))} by ${esc(pc.updatedBy || 'unknown')}</span>` : `<span style="font-size:11px;color:var(--bms-mute);">Never changed — this is the default.</span>`}
     </div>
 
-    ${S.users.length ? `<div class="tblwrap"><table>
-      <thead><tr><th>Name</th><th>Primary email</th><th>Country</th><th>Tokens</th><th>Connections</th><th>Joined</th><th>Adjust balance</th></tr></thead>
-      <tbody>${rows}</tbody>
-    </table></div>` : `<div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:30px;font-size:13px;color:var(--bms-mute);">No accounts yet. The first sign-up on flaunt.network will appear here.</div>`}
-
-    <p style="margin:0;font-size:11.5px;color:var(--bms-mute);">Every adjustment is written to the user&rsquo;s token ledger with your address as the actor.</p>`);
+  `);
 }
 
 function vBmsInv() {
@@ -1688,6 +1698,7 @@ function view() {
   if (h === '#/tokens') return vTokens();
   if (h === '#/bms/users') return vBmsUsers();
   if (h === '#/bms/invitations') return vBmsInv();
+  if (h === '#/bms/settings') return vBmsSettings();
 
   if (h.startsWith('#/p/')) return vProfile(h.slice(4));
   return APP === 'bms' ? vBmsUsers() : vNetwork();

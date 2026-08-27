@@ -45,6 +45,9 @@ type Me {
   tokenBalance: Int!
   createdAt: String!
   connectionCount: Int!
+  # Optional second address. Stored as an unverified claim until a
+  # verification round-trip exists.
+  secondaryEmail: String
 }
 
 type Connection {
