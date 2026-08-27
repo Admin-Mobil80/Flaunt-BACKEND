@@ -233,7 +233,7 @@ function reset() {
         connected:{}, introAsked:false,
         me:null, connections:[], invites:[], price:null,
         loading:false, dataError:null, landed:false, newVersion:false, sending:false,
-        stats:null, users:[], adminInvites:[], pricing:null,
+        stats:null, users:[], adminInvites:[], pricing:null, saving:false, profileError:null,
         auth:{ step: APP === 'portal' ? (INVITE ? 'signup' : 'choose') : 'email', email: (INVITE && INVITE.email) || (APP === 'bms' ? 'riyad@mobil80.com' : ''), busy:false, error:null, session:null } };
 }
 reset();
@@ -262,7 +262,8 @@ function topbar(active) {
         <span class="mono" style="font-size:13px;font-weight:500;">${S.me ? S.me.tokenBalance : '—'}</span>
         <span class="lbl">tokens</span>
       </button>
-      <span class="avatar" style="width:34px;height:34px;font-size:14px;">${S.me ? initialsOf(S.me.name) : '·'}</span>
+      <button onclick="go('#/profile')" title="Your profile" class="avatar"
+        style="width:34px;height:34px;font-size:14px;border:none;">${S.me ? initialsOf(S.me.name) : '·'}</button>
       ${APP === 'portal' ? `<button onclick="signOut()" title="Signed in as ${esc((session() && session().email) || '')}"
         style="background:none;border:1px solid var(--rule-2);color:var(--ink-2);font-size:12.5px;padding:7px 13px;">Sign out</button>` : ''}
     </div>
@@ -939,6 +940,76 @@ async function loadPortal() {
   }
 }
 
+async function saveProfile() {
+  const v = (id) => { const e = document.getElementById(id); return e ? e.value : ''; };
+  S.saving = true; S.profileError = null; render();
+  try {
+    const d = await gql(`mutation Upd($n:String,$d:String,$o:String,$l:String,$b:String){
+      updateProfile(name:$n, designation:$d, organisation:$o, location:$l, bio:$b){
+        userId name designation organisation location bio country tokenBalance createdAt connectionCount email } }`,
+      { n: v('pf-name'), d: v('pf-designation'), o: v('pf-org'), l: v('pf-location'), b: v('pf-bio') });
+    S.me = d.updateProfile;
+    toast('Profile updated.');
+    go('#/network');
+  } catch (e) {
+    S.profileError = e.message;
+  } finally { S.saving = false; render(); }
+}
+
+function vProfileEdit() {
+  const m = S.me || {};
+  const d = S.saving ? 'disabled' : '';
+  const words = String(m.bio || '').trim() ? String(m.bio).trim().split(/\s+/).length : 0;
+  return topbar('') + `<div class="wrap"><div class="col" style="max-width:560px;gap:24px;">
+    ${backlink('Network','#/network')}
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      <h1 class="big">Your profile</h1>
+      <p style="margin:0;font-size:14px;color:var(--ink-soft);">This is what your connections see. Your email and country are fixed &mdash; country decides how you are billed.</p>
+    </div>
+    ${S.profileError ? `<div role="alert" style="border:1px solid #E0C3C3;background:#FBF0F0;padding:11px 13px;font-size:12.5px;color:var(--bad);">${esc(S.profileError)}</div>` : ''}
+
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      <span class="lbl">Email</span>
+      <div class="mono" style="border:1px solid var(--rule-2);background:var(--sunk);padding:12px 14px;font-size:13.5px;color:var(--ink-soft);">${esc(m.email || '')}</div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      <label class="lbl" for="pf-name">Full name</label>
+      <input class="field" id="pf-name" ${d} value="${esc(m.name || '')}">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      <div style="display:flex;justify-content:space-between;"><label class="lbl" for="pf-designation">Designation</label><span class="lbl" style="color:var(--warn);">Required</span></div>
+      <input class="field" id="pf-designation" maxlength="100" ${d} value="${esc(m.designation || '')}">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      <div style="display:flex;justify-content:space-between;"><label class="lbl" for="pf-org">Organisation</label><span class="lbl">Optional</span></div>
+      <input class="field" id="pf-org" maxlength="100" ${d} value="${esc(m.organisation || '')}">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      <div style="display:flex;justify-content:space-between;"><label class="lbl" for="pf-location">Location</label><span class="lbl">Optional</span></div>
+      <input class="field" id="pf-location" maxlength="80" ${d} value="${esc(m.location || '')}">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      <label class="lbl" for="pf-bio">Professional description</label>
+      <textarea class="field" id="pf-bio" ${d} oninput="paintProfileCount()"
+        style="height:170px;resize:vertical;font-size:13.5px;line-height:1.62;">${esc(m.bio || '')}</textarea>
+      <span class="mono" id="pf-count" style="font-size:12px;color:var(--ink-soft);align-self:flex-end;">${words} / 300 words</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:16px;">
+      <button class="btn" ${d} onclick="saveProfile()">${S.saving ? 'Saving…' : 'Save changes'}</button>
+      <button ${d} onclick="go('#/network')" style="background:none;border:none;font-size:13px;color:var(--ink-soft);">Cancel</button>
+    </div>
+  </div></div>`;
+}
+
+function paintProfileCount() {
+  const e = document.getElementById('pf-bio'), n = document.getElementById('pf-count');
+  if (!e || !n) return;
+  const t = e.value.trim();
+  const w = t ? t.split(/\s+/).length : 0;
+  n.textContent = w + ' / 300 words';
+  n.style.color = w > 300 ? 'var(--bad)' : (w > 270 ? 'var(--warn)' : 'var(--ink-soft)');
+}
+
 async function refreshPortal() {
   try {
     const d = await gql(Q_PORTAL);
@@ -1253,15 +1324,57 @@ function vPortalAuth() {
       </div>`);
   }
 
-  return shell(`
-    <div style="display:flex;flex-direction:column;gap:10px;">
-      <h1 class="serif" style="margin:0;font-size:clamp(28px,5vw,36px);font-weight:400;letter-spacing:-.02em;">A smaller network.</h1>
-      <p style="margin:0;font-size:15px;color:var(--ink-soft);line-height:1.65;max-width:44ch;text-wrap:pretty;">Invitation-only, no feed, and every introduction costs a token. Sign in with your email — there is no password to remember.</p>
-    </div>
-    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-      <button class="btn" onclick="S.auth.step='signup';render();">Create an account</button>
-      <button class="btn ghost" onclick="S.auth.step='signin';render();">Sign in</button>
-    </div>`);
+  // The signed-out page is the only thing most visitors will ever see, so it
+  // explains the product rather than presenting two bare buttons.
+  const beat = (n, title, body) => `<div style="display:flex;gap:16px;align-items:flex-start;">
+      <span class="mono" style="font-size:11px;color:var(--accent);padding-top:4px;min-width:18px;">${n}</span>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <span style="font-size:14.5px;font-weight:500;color:var(--ink);">${title}</span>
+        <span style="font-size:13.5px;color:var(--ink-soft);line-height:1.6;max-width:52ch;">${body}</span>
+      </div>
+    </div>`;
+
+  return `<div style="min-height:100vh;background:var(--paper);display:flex;flex-direction:column;">
+    <header style="display:flex;align-items:center;justify-content:space-between;gap:16px;
+        padding:20px clamp(20px,5vw,56px);border-bottom:1px solid var(--rule);">
+      <span class="serif" style="font-size:23px;letter-spacing:.015em;">Flaunt</span>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button class="btn ghost" onclick="S.auth.step='signin';render();" style="padding:9px 16px;font-size:13.5px;">Sign in</button>
+        <button class="btn" onclick="S.auth.step='signup';render();" style="padding:9px 16px;font-size:13.5px;">Create an account</button>
+      </div>
+    </header>
+
+    <main style="flex-grow:1;padding:clamp(40px,7vw,84px) clamp(20px,5vw,56px);">
+      <div style="max-width:760px;margin:0 auto;display:flex;flex-direction:column;gap:44px;">
+        <div style="display:flex;flex-direction:column;gap:16px;">
+          <h1 class="serif" style="margin:0;font-size:clamp(34px,6.5vw,52px);font-weight:400;letter-spacing:-.025em;line-height:1.1;text-wrap:balance;">A professional network you can finish reading.</h1>
+          <p style="margin:0;font-size:16.5px;color:var(--ink-soft);line-height:1.7;max-width:56ch;text-wrap:pretty;">No feed. No algorithm. No one you have never met asking to connect. Flaunt is invitation-only, and every invitation costs the sender something — which is the whole point.</p>
+          <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px;">
+            <button class="btn" onclick="S.auth.step='signup';render();">Create an account</button>
+            <button class="btn ghost" onclick="S.auth.step='signin';render();">Sign in</button>
+          </div>
+          <span style="font-size:12.5px;color:var(--faint);">No password. We email you a six-digit code.</span>
+        </div>
+
+        <div style="display:flex;flex-direction:column;gap:22px;border-top:1px solid var(--rule-2);padding-top:34px;">
+          <span class="lbl">How it works</span>
+          ${beat('01','You start with ten tokens.','Granted when you join. They are the only currency here, and there is nothing else to buy.')}
+          ${beat('02','Each invitation costs one.','Spent the moment you send it, so nobody can blanket the network. If it is declined, or goes unanswered for seven days, the token comes back.')}
+          ${beat('03','Second-degree contacts stay private.','You can see who they are and what they do. Their email address stays masked until someone you both know introduces you.')}
+        </div>
+
+        <div style="border-top:1px solid var(--rule-2);padding-top:26px;">
+          <p class="serif" style="margin:0;font-size:19px;line-height:1.55;color:var(--ink-2);max-width:48ch;text-wrap:pretty;">You only pay for the connections you actually make.</p>
+        </div>
+      </div>
+    </main>
+
+    <footer style="border-top:1px solid var(--rule);padding:20px clamp(20px,5vw,56px);
+        display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <span style="font-size:12px;color:var(--faint);">Flaunt</span>
+      <span style="font-size:12px;color:var(--faint);">Invitation-only</span>
+    </footer>
+  </div>`;
 }
 
 /* ---------- modal + router ---------- */
@@ -1303,6 +1416,14 @@ function modalHtml() {
 function view() {
   if (APP === 'bms' && !signedIn()) return vBmsLogin();
   if (APP === 'portal' && !signedIn()) return vPortalAuth();
+  if (APP === 'bms' && S.dataError) {
+    return bmsShell('users', `<div style="border:1px solid var(--bms-bad-line);background:var(--bms-bad-wash);
+        padding:22px 24px;display:flex;flex-direction:column;gap:10px;align-items:flex-start;">
+      <span style="font-size:14px;font-weight:600;color:var(--bms-bad);">Could not load admin data</span>
+      <span style="font-size:12.5px;color:var(--bms-soft);">${esc(S.dataError)}</span>
+      <button class="pill" onclick="S.dataError=null;S.stats=null;render();">Try again</button>
+    </div>`);
+  }
   if (APP === 'portal' && S.dataError) {
     return topbar('') + `<div class="wrap"><div class="col">${emptyState(
       'Could not load your account', S.dataError,
@@ -1315,6 +1436,7 @@ function view() {
   if (h === '#/signup') return vSignup();
   if (h === '#/welcome') return vWelcome();
   if (h === '#/start') return vFirstRun();
+  if (h === '#/profile') return vProfileEdit();
   if (h === '#/invitations') return vInvitations();
   if (h === '#/gatekeeper') return vGatekeeper();
   if (h === '#/tokens') return vTokens();

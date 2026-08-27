@@ -110,6 +110,7 @@ export class ApiStack extends Stack {
       portalDs.createResolver(`Query${field}`, { typeName: 'Query', fieldName: field });
     }
     portalDs.createResolver('MutationsendInvitation', { typeName: 'Mutation', fieldName: 'sendInvitation' });
+    portalDs.createResolver('MutationupdateProfile', { typeName: 'Mutation', fieldName: 'updateProfile' });
 
     for (const field of ['adminUsers', 'adminStats', 'adminInvitations', 'adminPricingConfig']) {
       adminDs.createResolver(`Query${field}`, { typeName: 'Query', fieldName: field });

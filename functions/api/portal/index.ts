@@ -1,10 +1,14 @@
 import type { AppSyncResolverEvent } from 'aws-lambda';
-import { QueryCommand, GetCommand, TransactWriteCommand } from '@aws-sdk/lib-dynamodb';
+import { QueryCommand, GetCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'node:crypto';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import { priceForCountry, formatMinor, coerceBundleSize } from '../../shared/pricing';
 import * as k from '../../shared/keys';
 import { send, invitationEmail } from '../../shared/email';
+import {
+  validateName, validateBio, validateDesignation, validateOrganisation, validateLocation,
+  ValidationError,
+} from '../../shared/validation';
 
 const INVITE_COST = 1;
 
@@ -226,6 +230,81 @@ async function sendInvitation(userId: string, rawEmail: string) {
   return shapeInvite({ inviteId, recipientEmail, status, type: 'DIRECT', createdAt, expiresAt });
 }
 
+/**
+ * Edits the caller's own profile. Never takes a userId — the row written is the
+ * one the verified token identifies, so one member cannot write another's.
+ *
+ * Only the fields actually supplied are touched, so sending just a location
+ * cannot blank a bio. The same validators the sign-up path uses run here, since
+ * this is a second door onto the same data and a rule enforced on only one of
+ * them is not enforced at all.
+ *
+ * The name is denormalised into normalizedName and the GSI3 search key, which
+ * must move together with it or search would keep finding the old name.
+ */
+async function updateProfile(userId: string, args: any) {
+  const sets: string[] = [];
+  const removes: string[] = [];
+  const names: Record<string, string> = {};
+  const values: Record<string, any> = {};
+
+  const put = (attr: string, value: any) => {
+    names[`#${attr}`] = attr;
+    values[`:${attr}`] = value;
+    sets.push(`#${attr} = :${attr}`);
+  };
+
+  try {
+    if (args.name !== undefined && args.name !== null) {
+      const name = validateName(args.name);
+      put('name', name);
+      put('normalizedName', k.normalizeName(name));
+      const g = k.gsi3NameSearch(name, userId);
+      put('GSI3PK', g.GSI3PK);
+      put('GSI3SK', g.GSI3SK);
+    }
+    if (args.designation !== undefined && args.designation !== null) {
+      put('designation', validateDesignation(args.designation));
+    }
+    // Optional fields: an empty string means "clear it", which is a REMOVE
+    // rather than writing an empty string that would render as a blank line.
+    for (const [field, validate] of [
+      ['organisation', validateOrganisation],
+      ['location', validateLocation],
+    ] as const) {
+      if (args[field] !== undefined && args[field] !== null) {
+        const v = validate(args[field]);
+        if (v === undefined) { names[`#${field}`] = field; removes.push(`#${field}`); }
+        else put(field, v);
+      }
+    }
+    if (args.bio !== undefined && args.bio !== null) {
+      put('bio', validateBio(args.bio));
+    }
+  } catch (err) {
+    if (err instanceof ValidationError) throw new Error(err.message);
+    throw err;
+  }
+
+  if (sets.length === 0 && removes.length === 0) return me(userId);
+
+  const expr = [
+    sets.length ? `SET ${sets.join(', ')}` : '',
+    removes.length ? `REMOVE ${removes.join(', ')}` : '',
+  ].filter(Boolean).join(' ');
+
+  await ddb.send(new UpdateCommand({
+    TableName: TABLE_NAME,
+    Key: k.user(userId),
+    UpdateExpression: expr,
+    ConditionExpression: 'attribute_exists(PK)',
+    ExpressionAttributeNames: names,
+    ...(Object.keys(values).length ? { ExpressionAttributeValues: values } : {}),
+  }));
+
+  return me(userId);
+}
+
 export const handler = async (event: AppSyncResolverEvent<any>) => {
   const field = (event as any).info?.fieldName;
   const userId = callerId(event);
@@ -237,6 +316,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'myInvitations': return myInvitations(userId);
     case 'tokenPrice': return tokenPrice(userId);
     case 'sendInvitation': return sendInvitation(userId, args.email);
+    case 'updateProfile': return updateProfile(userId, args);
     // Name search needs the GSI3 NAME# namespace and the degree walk; until
     // that lands it returns nothing rather than something invented.
     case 'searchPeople': return [];
