@@ -43,6 +43,23 @@ const PLACES: Array<[string, string]> = [
 const pick = <T,>(a: readonly T[], i: number) => a[i % a.length];
 const conn = (a: string, b: string) => ({ PK: `USER#${a}`, SK: `CONNECTION#${b}` });
 
+/**
+ * A DynamoDB Scan returns at most 1MB and then stops, without erroring — so an
+ * unpaginated scan silently works on a subset. It read 796 of 1000 profiles
+ * before this was fixed, and the only symptom was a thinner graph than asked
+ * for.
+ */
+async function scanAll(params: any) {
+  const items: any[] = [];
+  let ExclusiveStartKey: any = undefined;
+  do {
+    const r: any = await ddb.send(new ScanCommand({ ...params, ExclusiveStartKey }));
+    items.push(...(r.Items ?? []));
+    ExclusiveStartKey = r.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return items;
+}
+
 /** BatchWrite caps at 25 items per request. */
 async function putAll(items: any[]) {
   for (let i = 0; i < items.length; i += 25) {
@@ -59,10 +76,10 @@ async function main() {
   if (!t?.userId) throw new Error(`No account for ${TARGET_EMAIL}`);
   const targetId = t.userId as string;
 
-  const { Items: existing = [] } = await ddb.send(new ScanCommand({
+  const existing = await scanAll({
     TableName: TABLE, FilterExpression: 'entityType = :t',
     ExpressionAttributeValues: { ':t': 'USER' }, ProjectionExpression: 'PK',
-  }));
+  });
   const need = Math.max(0, TOTAL - existing.length);
   console.log(`${existing.length} accounts exist; creating ${need} more (0 emails sent).`);
 
@@ -83,11 +100,11 @@ async function main() {
 
   // Read everyone back, then wire a graph directly — the same mirrored rows
   // acceptInvitation writes, so the app cannot tell the difference.
-  const { Items: all = [] } = await ddb.send(new ScanCommand({
+  const all = await scanAll({
     TableName: TABLE, FilterExpression: 'entityType = :t',
     ExpressionAttributeValues: { ':t': 'USER' }, ProjectionExpression: 'PK, #n',
     ExpressionAttributeNames: { '#n': 'name' },
-  }));
+  });
   const ids = all.map((u: any) => String(u.PK).replace('USER#', '')).filter((id) => id !== targetId);
   console.log(`Wiring a graph across ${ids.length + 1} accounts…`);
 
@@ -106,14 +123,16 @@ async function main() {
 
   // The target gets a substantial first degree, and each of those a network of
   // their own, so the second-degree tab has real depth rather than a handful.
-  const directCount = Math.min(18, ids.length);
+  const directCount = Math.min(30, ids.length);
   const directs = ids.slice(0, directCount);
   directs.forEach((id) => link(targetId, id));
   const rest = ids.slice(directCount);
   directs.forEach((d, i) => {
-    // Uneven, so counts look like a real network rather than a grid.
-    const fanout = 3 + ((i * 5) % 9);
-    for (let j = 0; j < fanout; j++) link(d, rest[(i * 7 + j * 3) % rest.length]);
+    // Uneven, so counts look like a real network rather than a grid. Thirty
+    // contacts averaging ~45 connections each puts the target's second degree
+    // comfortably into the thousands, which is the case worth designing for.
+    const fanout = 25 + ((i * 7) % 40);
+    for (let j = 0; j < fanout; j++) link(d, rest[(i * 31 + j * 13) % rest.length]);
   });
   // A little connectivity among the tail as well.
   rest.forEach((id, i) => { if (i % 3 === 0) link(id, rest[(i * 11 + 4) % rest.length]); });
