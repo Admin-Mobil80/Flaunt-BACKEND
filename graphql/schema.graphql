@@ -29,6 +29,8 @@ type Profile {
   degree: Int
   # Who could introduce you, when degree is 2.
   viaName: String
+  # True when a second address is on file but not yet proved.
+  secondaryEmailUnverified: Boolean
 }
 
 type Me {
@@ -127,6 +129,9 @@ type Query {
   # The invitation named by a link, returned only to the address it was sent to.
   invitation(inviteId: ID!): Invitation
   profile(userId: ID!): Profile
+  # A direct contact's own connections — who you could ask them to introduce
+  # you to. Only available for someone you are directly connected to.
+  connectionsOf(userId: ID!): [Profile!]!
   searchPeople(query: String!): [Profile!]!
 
   adminUsers(limit: Int): [AdminUser!]! @aws_cognito_user_pools
@@ -156,6 +161,7 @@ type Mutation {
     organisation: String
     location: String
     bio: String
+    secondaryEmail: String
   ): Me!
   adminAdjustTokens(userId: ID!, delta: Int!, reason: String): AdminUser! @aws_cognito_user_pools
   # How many tokens a bundle contains. The amount charged does not change —

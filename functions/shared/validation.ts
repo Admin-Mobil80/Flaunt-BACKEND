@@ -128,6 +128,24 @@ export function validateDesignation(designation: unknown): string {
   return trimmed;
 }
 
+/**
+ * Optional second address. Shape-checked only — it is NOT proved to belong to
+ * the person entering it, so it is stored as a claim and shown as unverified.
+ *
+ * Deliberately does not claim the address in the EMAIL# uniqueness space: doing
+ * so would let anyone squat an address they do not control and block its real
+ * owner from ever signing up. Ownership is only recorded once a verification
+ * round-trip exists.
+ */
+export function validateSecondaryEmail(email: unknown): string | undefined {
+  if (email === undefined || email === null || String(email).trim() === '') return undefined;
+  const v = String(email).trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v) || v.length > 254) {
+    throw new ValidationError('secondaryEmail', 'That does not look like an email address.');
+  }
+  return v;
+}
+
 /** Optional: an omitted or blank organisation is valid and stored as undefined. */
 export function validateOrganisation(organisation: unknown): string | undefined {
   if (organisation === undefined || organisation === null || String(organisation).trim() === '') {

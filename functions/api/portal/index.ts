@@ -7,7 +7,7 @@ import * as k from '../../shared/keys';
 import { send, invitationEmail, refundEmail } from '../../shared/email';
 import {
   validateName, validateBio, validateDesignation, validateOrganisation, validateLocation,
-  ValidationError,
+  validateSecondaryEmail, ValidationError,
 } from '../../shared/validation';
 
 const INVITE_COST = 1;
@@ -300,6 +300,11 @@ async function updateProfile(userId: string, args: any) {
     }
     if (args.bio !== undefined && args.bio !== null) {
       put('bio', validateBio(args.bio));
+    }
+    if (args.secondaryEmail !== undefined && args.secondaryEmail !== null) {
+      const v = validateSecondaryEmail(args.secondaryEmail);
+      if (v === undefined) { names['#secondaryEmail'] = 'secondaryEmail'; removes.push('#secondaryEmail'); }
+      else put('secondaryEmail', v);
     }
   } catch (err) {
     if (err instanceof ValidationError) throw new Error(err.message);
@@ -631,8 +636,9 @@ async function profile(callerId: string, targetId: string) {
   }));
   if (direct) {
     return { ...base, location: target.location ?? null, primaryEmail: target.primaryEmail,
-      secondaryEmail: target.secondaryEmail ?? null, degree: 1, viaName: null,
-      connectedAt: direct.connectedAt ?? null };
+      secondaryEmail: target.secondaryEmail ?? null,
+      secondaryEmailUnverified: Boolean(target.secondaryEmail),
+      degree: 1, viaName: null, connectedAt: direct.connectedAt ?? null };
   }
 
   const [mine, theirs] = await Promise.all([connectionRows(callerId), connectionRows(targetId)]);
@@ -754,6 +760,58 @@ async function secondDegree(userId: string) {
   }).sort((x, y) => String(x.name).localeCompare(String(y.name)));
 }
 
+/**
+ * The connections of one of the caller's direct contacts — the people they
+ * could ask that contact to introduce them to.
+ *
+ * Restricted to DIRECT contacts. Reading an arbitrary user's connection list
+ * would expose the shape of the network to someone standing outside it, which
+ * is the opposite of what the degree tiers exist for.
+ *
+ * Each person is returned with their degree relative to the CALLER, not to the
+ * contact: someone already in the caller's own network is marked as such rather
+ * than offered as an introduction they do not need.
+ */
+async function connectionsOf(callerId: string, contactId: string) {
+  const { Item: direct } = await ddb.send(new GetCommand({
+    TableName: TABLE_NAME, Key: k.connection(callerId, contactId),
+  }));
+  if (!direct) throw new Error('You can only see the connections of your direct contacts.');
+
+  const [theirs, mine, contact] = await Promise.all([
+    connectionRows(contactId), connectionRows(callerId), loadProfile(contactId),
+  ]);
+  const mineIds = new Set(mine.map((r: any) => r.otherUserId));
+
+  const ids = theirs.map((r: any) => r.otherUserId).filter((id: string) => id !== callerId);
+  if (ids.length === 0) return [];
+
+  const people = await Promise.all(
+    ids.map((id: string) => ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(id) })))
+  );
+
+  return ids.map((id: string, i: number) => {
+    const p = people[i].Item ?? {};
+    const isDirect = mineIds.has(id);
+    return {
+      userId: id,
+      name: p.name ?? 'Unknown',
+      designation: p.designation ?? null,
+      organisation: p.organisation ?? null,
+      // Already yours: full detail. Otherwise second degree, so masked.
+      location: isDirect ? (p.location ?? null) : null,
+      bio: p.bio ?? null,
+      country: p.country ?? '',
+      primaryEmail: isDirect ? p.primaryEmail : k.maskEmail(p.primaryEmail ?? ''),
+      secondaryEmail: isDirect ? (p.secondaryEmail ?? null) : null,
+      secondaryEmailUnverified: isDirect ? Boolean(p.secondaryEmail) : null,
+      connectedAt: null,
+      degree: isDirect ? 1 : 2,
+      viaName: isDirect ? null : contact.name,
+    };
+  }).sort((x: any, y: any) => String(x.name).localeCompare(String(y.name)));
+}
+
 export const handler = async (event: AppSyncResolverEvent<any>) => {
   const field = (event as any).info?.fieldName;
   const userId = callerId(event);
@@ -767,6 +825,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'tokenPrice': return tokenPrice(userId);
     case 'invitation': return invitation(userId, args.inviteId);
     case 'profile': return profile(userId, args.userId);
+    case 'connectionsOf': return connectionsOf(userId, args.userId);
     case 'acceptInvitation': return acceptInvitation(userId, args.inviteId);
     case 'declineInvitation': return declineInvitation(userId, args.inviteId);
     case 'cancelInvitation': return cancelInvitation(userId, args.inviteId);

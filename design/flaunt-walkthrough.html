@@ -460,14 +460,31 @@ function vNetwork() {
   </div></div>`;
 }
 
+/**
+ * Loads a direct contact's own connections. Lazy, on request: it is a read per
+ * contact-of-contact, and most profile views never ask for it.
+ */
+async function loadTheirConnections(userId) {
+  S.viewing = { ...S.viewing, theirsLoading: true };
+  render();
+  try {
+    const d = await gql(`query C($id:ID!){ connectionsOf(userId:$id){
+      userId name designation organisation degree viaName } }`, { id: userId });
+    S.viewing = { ...S.viewing, theirs: d.connectionsOf || [], theirsLoading: false };
+  } catch (e) {
+    S.viewing = { ...S.viewing, theirs: [], theirsLoading: false, theirsError: e.message };
+  }
+  render();
+}
+
 async function openProfile(userId) {
   S.viewing = { loading: true, userId, profile: null, error: null };
   render();
   try {
     const d = await gql(`query P($id:ID!){ profile(userId:$id){
       userId name designation organisation location bio country
-      primaryEmail secondaryEmail connectedAt degree viaName } }`, { id: userId });
-    S.viewing = { loading: false, userId, profile: d.profile, error: null };
+      primaryEmail secondaryEmail secondaryEmailUnverified connectedAt degree viaName } }`, { id: userId });
+    S.viewing = { loading: false, userId, profile: d.profile, error: null, theirs: null, theirsLoading: false };
   } catch (e) {
     S.viewing = { loading: false, userId, profile: null, error: e.message };
   }
@@ -504,7 +521,7 @@ function vProfile(id) {
         <span class="mono" style="font-size:13.5px;">${esc(p.primaryEmail || '—')}</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:5px;">
-        <span style="font-size:11.5px;color:var(--faint);">Secondary email</span>
+        <span style="font-size:11.5px;color:var(--faint);">Secondary email${p.secondaryEmailUnverified ? ' · unconfirmed' : ''}</span>
         <span class="mono" style="font-size:13.5px;color:${p.secondaryEmail?'var(--ink)':'var(--faint)'};">${esc(p.secondaryEmail || '—')}</span>
       </div>
     </div>`
@@ -549,6 +566,28 @@ function vProfile(id) {
     ${second ? `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:24px 26px;display:flex;flex-direction:column;gap:14px;">
       ${p.viaName ? `<span style="font-size:13.5px;color:var(--ink-2);">Connected through <strong style="font-weight:500;">${esc(p.viaName)}</strong></span>` : ''}
       <span style="font-size:12.5px;color:var(--faint);">Introductions are not built yet.</span>
+    </div>` : ''}
+
+    ${p.degree === 1 ? `<div style="display:flex;flex-direction:column;gap:0;border-top:1px solid var(--rule-2);padding-top:22px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:9px;border-bottom:1px solid var(--rule-2);">
+        <span class="lbl">${esc((p.name || '').split(' ')[0])}&rsquo;s connections</span>
+        ${v.theirs === null && !v.theirsLoading ? `<button onclick="loadTheirConnections('${p.userId}')"
+          style="background:none;border:none;padding:0;font-size:12.5px;color:var(--accent);">Show</button>` : ''}
+      </div>
+      ${v.theirsLoading ? `<p style="margin:12px 0;font-size:13px;color:var(--ink-soft);">Loading…</p>` : ''}
+      ${v.theirs && v.theirs.length ? v.theirs.map((c) => {
+        const crole = [c.designation, c.organisation].filter(Boolean).join(' · ');
+        return `<div class="lrow" style="grid-template-columns:26px minmax(110px,1fr) minmax(0,1.3fr) 96px;">
+          <span class="avatar" style="width:26px;height:26px;font-size:10.5px;background:#F3EDE4;">${initialsOf(c.name)}</span>
+          <button onclick="S.viewing=null;go('#/p/${c.userId}')" class="trunc"
+            style="background:none;border:none;padding:0;text-align:left;font-family:var(--serif);font-size:15px;color:var(--ink);">${esc(c.name)}</button>
+          <span class="trunc hide-sm" style="font-size:12.5px;color:var(--ink-soft);">${esc(crole || '—')}</span>
+          <span style="text-align:right;">${c.degree === 1
+            ? `<span class="lbl" style="color:var(--good);">Connected</span>`
+            : `<span class="lbl" style="color:var(--warn);">2nd degree</span>`}</span>
+        </div>`;
+      }).join('') : (v.theirs && v.theirs.length === 0 ? `<p style="margin:12px 0;font-size:13px;color:var(--faint);">They have no other connections yet.</p>` : '')}
+      ${v.theirsError ? `<p style="margin:12px 0;font-size:12.5px;color:var(--bad);">${esc(v.theirsError)}</p>` : ''}
     </div>` : ''}
 
     ${p.degree === 1 && p.connectedAt ? `<div style="display:flex;align-items:center;gap:9px;border-top:1px solid var(--rule);padding-top:20px;">
@@ -751,7 +790,7 @@ async function setBundleSize(tokens) {
 
 /* ---------- BMS ---------- */
 function bmsShell(active, inner) {
-  const nav = [['users','User ledger'],['invitations','Invitations'],['webhooks','Webhooks']].map(([k,l]) =>
+  const nav = [['users','User ledger'],['invitations','Invitations']].map(([k,l]) =>
     `<button onclick="go('#/bms/${k}')" ${active===k?'aria-current="true"':''}>${l}</button>`).join('');
   return `<div class="bms">
     <header class="bms-top">
@@ -767,8 +806,7 @@ function bmsShell(active, inner) {
       </div>
     </header>
     <div class="bms-body">
-      <nav class="bms-nav"><span class="lbl" style="padding:0 16px 9px;">Operations</span>${nav}
-        <button style="pointer-events:none;">Digests</button></nav>
+      <nav class="bms-nav"><span class="lbl" style="padding:0 16px 9px;">Operations</span>${nav}</nav>
       <main class="bms-main">${inner}</main>
     </div>
   </div>`;
@@ -927,41 +965,6 @@ function vBmsInv() {
     : `<div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:30px;font-size:13px;color:var(--bms-mute);">No invitations yet.</div>`}`);
 }
 
-function vBmsHooks() {
-  const rows = HOOKS.map((h) => {
-    const pass = h.sig === 'PASS';
-    const fail = h.kind === 'fail';
-    return `<tr style="${fail?'background:#FDF6F6;':''}">
-      <td class="mono" style="font-size:11px;color:var(--bms-mute);border-left:2px solid ${fail?'var(--bms-bad)':'transparent'};">${h.t}</td>
-      <td class="mono" style="font-size:11.5px;">${h.ev}</td>
-      <td class="mono" style="font-size:11px;color:var(--bms-mute);">${h.order}</td>
-      <td class="mono" style="font-size:12px;font-weight:500;">${h.amt}</td>
-      <td class="mono" style="font-size:11.5px;color:${h.tax==='—'?'#96A0AC':'var(--bms-soft)'};">${h.tax}</td>
-      <td><span class="chip" style="padding:2px 8px;border-color:${pass?'var(--bms-good-line)':'var(--bms-bad-line)'};background:${pass?'var(--bms-good-wash)':'var(--bms-bad-wash)'};"><span class="mono" style="font-size:10px;letter-spacing:.06em;color:${pass?'var(--bms-good)':'var(--bms-bad)'};">${h.sig}</span></span></td>
-      <td style="font-size:11.5px;color:${fail?'var(--bms-bad)':(h.kind==='warn'?'var(--bms-warn)':'var(--bms-soft)')};">${esc(h.out)}</td></tr>`;
-  }).join('');
-  return bmsShell('webhooks', `
-    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
-      <div style="display:flex;flex-direction:column;gap:3px;">
-        <h1 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em;">Razorpay webhooks</h1>
-        <span class="mono" style="font-size:11.5px;color:var(--bms-mute);">POST /webhooks/razorpay · HMAC-SHA256</span>
-      </div>
-      <span class="chip" style="border-color:var(--bms-good-line);background:var(--bms-good-wash);padding:6px 12px;">
-        <span class="dot" style="background:var(--bms-good);"></span><span class="mono" style="font-size:11px;letter-spacing:.05em;color:var(--bms-good);">LIVE</span></span>
-    </div>
-    <div class="stats">
-      <div><span class="lbl">Captured · INR</span><span class="mono" style="font-size:19px;font-weight:600;">₹14,632.00</span></div>
-      <div><span class="lbl">Of which GST</span><span class="mono" style="font-size:19px;font-weight:600;color:var(--bms-accent);">₹2,232.00</span></div>
-      <div><span class="lbl">Captured · USD</span><span class="mono" style="font-size:19px;font-weight:600;">$65.00</span></div>
-      <div><span class="lbl">Signature failures</span><span class="mono" style="font-size:19px;font-weight:600;color:var(--bms-bad);">1</span></div>
-    </div>
-    <div class="tblwrap"><table>
-      <thead><tr><th>Time</th><th>Event</th><th>Order id</th><th>Amount</th><th>Tax</th><th>Signature</th><th>Outcome</th></tr></thead>
-      <tbody>${rows}</tbody></table></div>
-    <p style="margin:0;font-size:11.5px;color:var(--bms-mute);max-width:96ch;">A failed signature never reaches the ledger — the request is rejected before any balance is touched. Repeat deliveries of an event already processed are recorded and ignored.</p>`);
-}
-
-/* ---------- actions ---------- */
 function openInvite() { S.modal = 'invite'; render(); }
 function closeModal() { S.modal = null; render(); }
 async function sendInvite() {
@@ -1033,7 +1036,7 @@ async function gql(query, variables) {
 }
 
 const Q_PORTAL = `query Portal {
-  me { userId name email designation organisation location bio country tokenBalance createdAt connectionCount }
+  me { userId name email designation organisation location bio country tokenBalance createdAt connectionCount secondaryEmail }
   myConnections { userId name designation organisation location connectedAt connectionCount }
   secondDegree { userId name designation organisation viaName }
   myInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome }
@@ -1075,13 +1078,13 @@ async function saveProfile() {
   // the user was looking at the description they had written.
   const payload = {
     n: v('pf-name'), d: v('pf-designation'), o: v('pf-org'),
-    l: v('pf-location'), b: v('pf-bio'),
+    l: v('pf-location'), b: v('pf-bio'), s2: v('pf-email2'),
   };
   S.saving = true; S.profileError = null; render();
   try {
-    const d = await gql(`mutation Upd($n:String,$d:String,$o:String,$l:String,$b:String){
-      updateProfile(name:$n, designation:$d, organisation:$o, location:$l, bio:$b){
-        userId name designation organisation location bio country tokenBalance createdAt connectionCount email } }`,
+    const d = await gql(`mutation Upd($n:String,$d:String,$o:String,$l:String,$b:String,$s2:String){
+      updateProfile(name:$n, designation:$d, organisation:$o, location:$l, bio:$b, secondaryEmail:$s2){
+        userId name designation organisation location bio country tokenBalance createdAt connectionCount email secondaryEmail } }`,
       payload);
     S.me = d.updateProfile;
     S.profileDraft = null;
@@ -1105,7 +1108,8 @@ function vProfileEdit() {
   const base = S.me || {};
   const dr = S.profileDraft;
   const m = dr ? {
-    ...base, name: dr.n, designation: dr.d, organisation: dr.o, location: dr.l, bio: dr.b,
+    ...base, name: dr.n, designation: dr.d, organisation: dr.o,
+    location: dr.l, bio: dr.b, secondaryEmail: dr.s2,
   } : base;
   const d = S.saving ? 'disabled' : '';
   const words = String(m.bio || '').trim() ? String(m.bio).trim().split(/\s+/).length : 0;
@@ -1136,6 +1140,12 @@ function vProfileEdit() {
     <div style="display:flex;flex-direction:column;gap:7px;">
       <div style="display:flex;justify-content:space-between;"><label class="lbl" for="pf-location">Location</label><span class="lbl">Optional</span></div>
       <input class="field" id="pf-location" maxlength="80" ${d} value="${esc(m.location || '')}">
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      <div style="display:flex;justify-content:space-between;"><label class="lbl" for="pf-email2">Secondary email</label><span class="lbl">Optional</span></div>
+      <input class="field mono" id="pf-email2" type="email" maxlength="254" ${d}
+        style="font-size:13.5px;" value="${esc(m.secondaryEmail || '')}">
+      <span style="font-size:12px;color:var(--faint);">Shown only to your direct connections. It is not verified yet, so it is labelled as unconfirmed on your profile.</span>
     </div>
     <div style="display:flex;flex-direction:column;gap:7px;">
       <div style="display:flex;justify-content:space-between;"><label class="lbl" for="pf-bio">Professional description</label><span class="lbl" style="color:var(--warn);">Required</span></div>
@@ -1678,7 +1688,7 @@ function view() {
   if (h === '#/tokens') return vTokens();
   if (h === '#/bms/users') return vBmsUsers();
   if (h === '#/bms/invitations') return vBmsInv();
-  if (h === '#/bms/webhooks') return vBmsHooks();
+
   if (h.startsWith('#/p/')) return vProfile(h.slice(4));
   return APP === 'bms' ? vBmsUsers() : vNetwork();
 }
@@ -1690,7 +1700,7 @@ function renderNotice() {
   const bms = APP === 'bms';
   el.innerHTML = `<div style="background:${bms ? '#20262E' : '#2A2018'};color:${bms ? '#AEB8C4' : '#C9BCA8'};
       font-size:11.5px;letter-spacing:.02em;padding:7px 18px;text-align:center;">
-    ${bms ? 'Preview — sample data remains on the webhooks page.'
+    ${bms ? 'Preview — payments and daily digests are not built yet.'
           : 'Preview — payments are not connected yet.'}
   </div>`;
 }
