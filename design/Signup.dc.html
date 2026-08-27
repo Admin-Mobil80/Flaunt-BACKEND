@@ -1,0 +1,130 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #FBF9F5;
+      color: #1F1B16;
+      font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    a { color: #6E2B2B; text-decoration: none; }
+    a:hover { color: #4A1C1C; }
+    .serif { font-family: "Newsreader", Georgia, "Times New Roman", serif; font-weight: 400; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .lbl {
+      font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+      color: #A39A8C; font-weight: 500;
+    }
+    input, select, textarea, button { font: inherit; color: inherit; }
+    ::selection { background: #E8DCD2; }
+  </style>
+</helmet>
+<div style="min-height: 960px; display: flex; flex-direction: column; align-items: center; background: #FBF9F5; padding: 46px 56px 56px;">
+  <div style="width: 100%; max-width: 560px; display: flex; flex-direction: column; gap: 26px;">
+
+    <div style="display: flex; align-items: baseline; justify-content: space-between;">
+      <span class="serif" style="font-size: 24px; letter-spacing: 0.015em;">Flaunt</span>
+      <span class="lbl">Step 2 of 2</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <h1 class="serif" style="margin: 0; font-size: 33px; font-weight: 400; letter-spacing: -0.015em;">Create your account</h1>
+      <p style="margin: 0; font-size: 14px; color: #6B6459; max-width: 48ch;">Five fields, once. Flaunt keeps nothing else about you.</p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <span class="lbl">Email</span>
+      <div style="display: flex; align-items: center; justify-content: space-between; border: 1px solid #D3CABA; background: #F4F0E8; padding: 12px 14px;">
+        <span class="mono" style="font-size: 13.5px; color: #4A4137;">arjun.mehta@setu.co</span>
+        <span style="display: flex; align-items: center; gap: 6px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2E5E3E" stroke-width="1.9"><path d="M5 12.5 L10 17.5 L19 7"></path></svg>
+          <span class="lbl" style="color: #2E5E3E;">Verified</span>
+        </span>
+      </div>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <span class="lbl">Full name</span>
+      <input value="Arjun Mehta" style="border: 1px solid #D3CABA; background: #FFFFFF; padding: 12px 14px; font-size: 14px; outline: none;" />
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <span class="lbl">Country</span>
+        <span class="lbl" style="color: #8A5A1E;">Required</span>
+      </div>
+      <select style="border: 1px solid #D3CABA; background: #FFFFFF; padding: 12px 14px; font-size: 14px; outline: none; appearance: none; width: 100%;">
+        <option>India</option>
+        <option>Singapore</option>
+        <option>Portugal</option>
+        <option>Ghana</option>
+        <option>United Arab Emirates</option>
+        <option>United Kingdom</option>
+        <option>United States</option>
+      </select>
+      <span style="font-size: 12px; color: #A39A8C;">Detected from your connection. Change it if that is wrong &mdash; it sets how you are billed for tokens.</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 7px;">
+      <span class="lbl">Professional description</span>
+      <textarea value="{{bio}}" onChange="{{onBio}}" style="border: 1px solid #D3CABA; background: #FFFFFF; padding: 13px 14px; font-size: 13.5px; line-height: 1.62; height: 176px; resize: none; outline: none; font-family: inherit; color: #37312A;"></textarea>
+      <div style="display: flex; flex-direction: column; gap: 7px; margin-top: 3px;">
+        <div style="height: 2px; background: #E4DED2; width: 100%;">
+          <div style="height: 2px; width: {{barWidth}}; background: {{barColor}};"></div>
+        </div>
+        <div style="display: flex; align-items: center; justify-content: space-between;">
+          <span style="font-size: 12px; color: #6B6459;">A description, not a résumé. No links, no titles you did not hold.</span>
+          <span class="mono" style="font-size: 12.5px; font-weight: 500; color: {{barColor}};">{{count}} / 300 words</span>
+        </div>
+      </div>
+    </div>
+
+    <button style="background: #6E2B2B; color: #FBF9F5; border: none; padding: 14px 22px; font-size: 14px; font-weight: 500; cursor: pointer; align-self: flex-start;">Create account</button>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script>
+const SEED_BIO = `I lead product for the payments platform at Setu, where we build the rails that let smaller Indian fintechs move money without first assembling a compliance team. My team owns onboarding, the reconciliation engine and the developer experience around both. Most of what I do day to day is decide what we are not going to build this quarter.
+
+Before Setu I spent six years at Flipkart, almost all of it on the seller side: pricing tools, settlement dashboards, dispute queues. The unglamorous internal software that a few thousand people depend on every working day and nobody writes case studies about. That stretch shaped how I think about this work more than anything since. I care much more about the second year of a product than the launch, and I have grown suspicious of any metric that only moves when someone is watching it.
+
+I started as a backend engineer and still read the code. It makes me a slower product manager and, I think, a considerably more useful one. I can tell the difference between a hard problem and an expensive one, and I have stopped asking engineers for estimates I could not have given myself.
+
+What I am glad to talk about: payments infrastructure in markets where the regulator moves faster than the incumbents; how small teams hold quality as they scale past the point where everyone knows everyone; and hiring, which I have done badly enough times to have opinions about.
+
+I am in Bengaluru, and happy to be useful to people building in this space, particularly early founders working out whether what they have is a product problem or a distribution one. That distinction took me years to learn and ten minutes to explain.`;
+
+class Component extends DCLogic {
+  renderVals() {
+    const bio = this.state && this.state.bio !== undefined ? this.state.bio : SEED_BIO;
+    const trimmed = bio.trim();
+    const count = trimmed === '' ? 0 : trimmed.split(/\s+/).length;
+    const over = count > 300;
+    const near = count > 270;
+    const pct = Math.min(100, Math.round((count / 300) * 100));
+    return {
+      bio: bio,
+      count: count,
+      barWidth: pct + '%',
+      barColor: over ? '#9B2C2C' : (near ? '#8A5A1E' : '#2E5E3E'),
+      onBio: (e) => this.setState({ bio: e.target.value })
+    };
+  }
+}
+</script>
+</body>
+</html>

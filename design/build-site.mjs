@@ -1,0 +1,89 @@
+/**
+ * Emits the two deployable bundles from the single walkthrough source, writing
+ * each into the frontend repo that owns it:
+ *
+ *   ../../Flaunt-PORTAL/public/index.html  -> flaunt.network      (user app only)
+ *   ../../Flaunt-BMS/public/index.html     -> bms.flaunt.network  (admin only)
+ *
+ * Those repos deploy themselves: committing and pushing to main runs their
+ * GitHub Actions workflow, which syncs public/ to S3 and invalidates CloudFront.
+ * CDK provisions the hosting and never uploads content.
+ *
+ * Both are preview builds of a design prototype with no backend behind them, so
+ * each is marked as such in the page and excluded from search indexes.
+ */
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+
+const REGION = process.env.FLAUNT_REGION ?? 'ap-south-1';
+const PROFILE = process.env.AWS_PROFILE ?? 'cloudmeter';
+
+/**
+ * The BMS bundle needs the deployed user-pool client id to sign anyone in.
+ * Read it from the stack outputs rather than hardcoding it, and fall back to a
+ * placeholder so the site still builds before the auth stack exists — the login
+ * screen detects the placeholder and says so instead of failing obscurely.
+ */
+function bmsClientId() {
+  try {
+    const out = execFileSync('aws', [
+      'cloudformation', 'describe-stacks',
+      '--stack-name', 'FlauntBmsAuthStackProd',
+      '--region', REGION, '--profile', PROFILE,
+      '--query', "Stacks[0].Outputs[?OutputKey=='BmsUserPoolClientId'].OutputValue",
+      '--output', 'text',
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (out && out !== 'None') return out;
+  } catch { /* stack not deployed yet, or no credentials */ }
+  console.warn('  ! BMS auth stack not readable — building with a placeholder client id.');
+  return '__BMS_CLIENT_ID__';
+}
+const CLIENT_ID = bmsClientId();
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const SRC = join(HERE, 'flaunt-walkthrough.html');
+// This file lives at Flaunt-BACKEND/design/, so the sibling frontend repos are
+// two levels up — not one.
+const TARGETS = {
+  portal: join(HERE, '..', '..', 'Flaunt-PORTAL', 'public'),
+  bms: join(HERE, '..', '..', 'Flaunt-BMS', 'public'),
+};
+
+const NOTICE = {
+  portal: 'PREVIEW — design prototype. No accounts, no payments, nothing is saved.',
+  bms: 'PREVIEW — design prototype. Sample data only; these are not real users.',
+};
+
+const src = await readFile(SRC, 'utf8');
+
+for (const app of ['portal', 'bms']) {
+  let out = src;
+
+  const before = out;
+  out = out.replace("var APP = 'both';", `var APP = '${app}';`);
+  if (out === before) throw new Error('APP selector not found in source');
+
+  out = out.replace('__AWS_REGION__', REGION).replace('__BMS_CLIENT_ID__', CLIENT_ID);
+
+  // Search engines must not index a service that cannot yet accept anyone.
+  // The CloudFront response-headers policy sets X-Robots-Tag too; this is the
+  // copy that survives if the file is ever served from somewhere else.
+  out = out.replace(
+    '<meta name="viewport"',
+    '<meta name="robots" content="noindex, nofollow">\n<meta name="viewport"'
+  );
+
+  // The bar is prototype scaffolding either way, but on a public hostname it
+  // has to say plainly what this is — a visitor did not arrive knowing.
+  out = out.replace(
+    '<span class="tag">PROTOTYPE</span>',
+    `<span class="tag">${NOTICE[app]}</span>`
+  );
+
+  const dir = TARGETS[app];
+  await mkdir(dir, { recursive: true });
+  await writeFile(join(dir, 'index.html'), out);
+  console.log(`${app}: ${dir}/index.html (${out.length} bytes)`);
+}

@@ -1,0 +1,1048 @@
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Flaunt Walkthrough</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+/* Flaunt commits to one visual world - warm paper, letterpress rules. Single
+   theme on purpose, so every color is painted explicitly and the page holds on
+   whatever ground the host paints behind it. */
+:root {
+  --paper:#FBF9F5; --raised:#FFFFFF; --sunk:#F4F0E8;
+  --ink:#1F1B16; --ink-2:#37312A; --ink-soft:#6B6459; --faint:#A39A8C; --ghost:#C3B9A8;
+  --rule:#E4DED2; --rule-2:#D3CABA;
+  --accent:#6E2B2B; --accent-deep:#4A1C1C; --accent-wash:#F7F1EC;
+  --good:#2E5E3E; --good-wash:#EFF4F0; --good-line:#B9CBBE;
+  --warn:#8A5A1E; --warn-wash:#F7F1E3; --warn-line:#D8C9A8;
+  --bad:#9B2C2C;
+  --bms-bg:#F2F4F6; --bms-panel:#FFFFFF; --bms-ink:#171A1F; --bms-soft:#3C4653;
+  --bms-mute:#6B7684; --bms-rule:#DDE1E6; --bms-rule-2:#C9D0D8; --bms-accent:#2B4A6E;
+  --bms-accent-wash:#EDF2F8; --bms-head:#F7F9FA;
+  --bms-good:#1F6B43; --bms-good-wash:#E8F3EC; --bms-good-line:#BFDCCB;
+  --bms-bad:#A32020; --bms-bad-wash:#FBEBEB; --bms-bad-line:#E8C4C4;
+  --bms-warn:#8A5A1E; --bms-warn-wash:#FBF2E3; --bms-warn-line:#E4D3AE;
+  --sans:"IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --serif:"Newsreader", Georgia, "Times New Roman", serif;
+  --mono:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+*, *::before, *::after { box-sizing: border-box; }
+body {
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:var(--sans); font-size:14px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+a { color:var(--accent); text-decoration:none; }
+a:hover { color:var(--accent-deep); }
+button { font:inherit; color:inherit; cursor:pointer; }
+:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation:none !important; transition:none !important; } }
+
+.serif { font-family:var(--serif); font-weight:400; }
+.mono { font-family:var(--mono); font-variant-numeric:tabular-nums; }
+.lbl { font-size:10px; letter-spacing:.15em; text-transform:uppercase; color:var(--faint); font-weight:500; }
+
+/* ---- prototype scaffolding (not part of the product) ---- */
+#bar {
+  position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:14px;
+  flex-wrap:wrap; padding:8px 18px; background:var(--ink); color:#E9E3DA;
+}
+#bar .tag { font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; color:#9C9285;
+  border:1px solid #4A4239; padding:2px 7px; }
+#bar nav { display:flex; gap:4px; flex-wrap:wrap; }
+#bar button {
+  background:none; border:1px solid transparent; color:#B8AFA2;
+  font-size:11.5px; padding:4px 9px;
+}
+#bar button:hover { color:#F3EDE4; }
+#bar button[aria-current="true"] { background:#3A322A; color:#FBF9F5; border-color:#544A40; }
+
+/* ---- app chrome ---- */
+.top {
+  display:flex; align-items:center; justify-content:space-between; gap:16px;
+  height:68px; padding:0 clamp(20px,5vw,56px); border-bottom:1px solid var(--rule);
+  background:var(--paper);
+}
+.top nav { display:flex; gap:22px; align-items:center; }
+.top nav button { background:none; border:none; font-size:13.5px; color:var(--ink-soft); padding:0 0 3px; }
+.top nav button[aria-current="true"] { color:var(--ink); font-weight:500; border-bottom:1.5px solid var(--accent); }
+.purse { display:flex; align-items:center; gap:9px; border:1px solid var(--rule-2); padding:6px 13px; background:none; }
+.purse:hover { border-color:var(--accent); }
+.avatar { border-radius:50%; background:#EDE3D6; color:#4A4137; font-family:var(--serif);
+  display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+.wrap { padding:clamp(28px,4vw,54px) clamp(20px,5vw,56px) 72px; }
+.col { max-width:764px; margin:0 auto; display:flex; flex-direction:column; gap:30px; }
+.col.wide { max-width:830px; }
+h1.big { margin:0; font-family:var(--serif); font-size:clamp(26px,4vw,32px); font-weight:400;
+  letter-spacing:-.01em; text-wrap:balance; }
+
+.row-link { display:flex; align-items:center; gap:16px; padding:17px 0;
+  border-bottom:1px solid var(--rule); background:none; border-left:0; border-right:0; border-top:0;
+  width:100%; text-align:left; }
+.row-link:hover { background:var(--sunk); }
+.chip { display:inline-flex; align-items:center; gap:6px; border:1px solid; padding:3px 9px; }
+.dot { width:5px; height:5px; border-radius:50%; flex-shrink:0; }
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:9px;
+  background:var(--accent); color:var(--paper); border:none; padding:13px 22px;
+  font-size:14px; font-weight:500; }
+.btn:hover { background:var(--accent-deep); }
+.btn.ghost { background:none; border:1px solid var(--rule-2); color:var(--ink-2); }
+.btn.ghost:hover { background:var(--sunk); }
+.btn[disabled] { background:none; border:1px solid var(--rule-2); color:var(--faint); cursor:not-allowed; }
+.field { border:1px solid var(--rule-2); background:var(--raised); padding:12px 14px;
+  font-size:14px; width:100%; outline:none; font-family:var(--sans); }
+.field:focus { border-color:var(--accent); }
+.scrim { position:fixed; inset:0; background:rgba(31,27,22,.38); z-index:60;
+  display:flex; align-items:center; justify-content:center; padding:20px; }
+.modal { width:min(540px,100%); background:var(--paper); border:1px solid #C6BBA8;
+  box-shadow:0 24px 60px rgba(31,27,22,.22); padding:clamp(22px,4vw,34px) clamp(20px,4vw,36px);
+  display:flex; flex-direction:column; gap:22px; max-height:88vh; overflow-y:auto; }
+.toast { position:fixed; left:50%; transform:translateX(-50%); bottom:28px; z-index:70;
+  background:var(--ink); color:var(--paper); padding:11px 18px; font-size:13px; }
+
+
+/* Narrow screens: the wordmark+nav group and the token purse collide on one
+   68px row, so let the bar wrap and drop the purse's label. */
+@media (max-width:600px) {
+  .top { height:auto; padding-top:12px; padding-bottom:12px; flex-wrap:wrap; row-gap:12px; }
+  .top > div:first-child { gap:18px; }
+  .top nav { gap:18px; }
+  .purse .lbl { display:none; }
+  .wrap { padding-top:24px; }
+}
+.grid2 { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:22px; }
+@media (max-width:720px) { .grid2 { grid-template-columns:minmax(0,1fr); } }
+
+/* ---- BMS ---- */
+.bms { background:var(--bms-bg); color:var(--bms-ink); font-size:13px; min-height:100vh; }
+.bms .lbl { color:var(--bms-mute); letter-spacing:.09em; font-weight:600; }
+.bms-top { display:flex; align-items:center; justify-content:space-between; gap:12px;
+  height:46px; padding:0 20px; background:var(--bms-ink); color:#E8EBEE; flex-wrap:wrap; }
+.bms-body { display:flex; align-items:stretch; min-height:calc(100vh - 46px); }
+.bms-nav { width:186px; flex-shrink:0; background:var(--bms-panel); border-right:1px solid var(--bms-rule);
+  padding:16px 0; display:flex; flex-direction:column; gap:1px; }
+.bms-nav button { background:none; border:none; text-align:left; padding:9px 16px;
+  font-size:13px; color:var(--bms-mute); border-left:2px solid transparent; }
+.bms-nav button[aria-current="true"] { background:var(--bms-accent-wash); color:var(--bms-accent);
+  font-weight:600; border-left-color:var(--bms-accent); }
+.bms-main { flex-grow:1; padding:22px 24px 48px; display:flex; flex-direction:column; gap:18px; min-width:0; }
+.stats { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:1px;
+  background:var(--bms-rule); border:1px solid var(--bms-rule); }
+.stats > div { background:var(--bms-panel); padding:13px 16px; display:flex; flex-direction:column; gap:3px; }
+.tblwrap { border:1px solid var(--bms-rule); background:var(--bms-panel); overflow-x:auto; }
+table { border-collapse:collapse; width:100%; min-width:940px; }
+thead th { background:var(--bms-head); border-bottom:1px solid var(--bms-rule); padding:10px 16px;
+  font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--bms-mute); font-weight:600; white-space:nowrap; }
+tbody td { border-bottom:1px solid #EDF0F2; padding:9px 16px; vertical-align:middle; }
+.step { width:24px; height:24px; border:1px solid var(--bms-rule-2); background:var(--bms-panel);
+  display:inline-flex; align-items:center; justify-content:center; font-family:var(--mono); font-size:13px;
+  color:var(--bms-soft); }
+.step:hover { background:var(--bms-accent-wash); border-color:var(--bms-accent); color:var(--bms-accent); }
+.pill { border:1px solid var(--bms-rule-2); background:var(--bms-panel); padding:6px 12px; font-size:12px; color:var(--bms-soft); }
+.pill[aria-current="true"] { border-color:var(--bms-accent); background:var(--bms-accent-wash);
+  color:var(--bms-accent); font-weight:600; }
+@media (max-width:860px) { .bms-body { flex-direction:column; } .bms-nav { width:100%; flex-direction:row; overflow-x:auto; }
+  .bms-nav .lbl { display:none; } .stats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+</style>
+
+<div id="bar">
+  <span class="tag">PROTOTYPE</span>
+  <nav id="barnav"></nav>
+</div>
+<div id="app"></div>
+<div id="layer"></div>
+
+<script>
+"use strict";
+const COIN = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.2"/></svg>';
+const BACK_ARROW = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14 6 L8 12 L14 18"/></svg>';
+const RETURN = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M20 11.5 a8 8 0 1 1 -2.6 -5.9"/><path d="M20 4 V10 H14"/></svg>';
+const LOCK = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="5" y="11" width="14" height="9"/><path d="M8.5 11 V7.5 a3.5 3.5 0 0 1 7 0 V11"/></svg>';
+const SEARCH = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="11" cy="11" r="7"/><path d="M16.2 16.2 L21 21"/></svg>';
+const CHEV = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M10 6 L16 12 L10 18"/></svg>';
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/** Title, then employer when there is one. No trailing separator if there is not. */
+const roleLine = (p) => p.org ? `${esc(p.designation)} · ${esc(p.org)}` : esc(p.designation);
+
+const PEOPLE = {
+  priya:{id:'priya',ini:'PN',name:'Priya Nair',designation:'Design director',org:'Ather Energy',location:'Bengaluru, India',
+    since:'14 June 2026',degree:1,email:'priya.nair@atherenergy.com',email2:'priya@nairstudio.in',
+    bio:'I run design at Ather Energy, where my team owns everything a rider touches — the dash, the app, the wayfinding across the charging network. Fifteen years in, I have stopped believing that good design announces itself. Before Ather: Titan, and four years freelancing for manufacturers who had never hired a designer before and were not sure they needed one.'},
+  daniel:{id:'daniel',ini:'DO',name:'Daniel Osei',designation:'Infrastructure engineer',org:'Paystack',location:'Accra, Ghana',
+    since:'02 June 2026',degree:1,email:'daniel.osei@paystack.com',email2:'—',
+    bio:'I keep payment infrastructure upright across four African markets. Most of my work is capacity planning and the unglamorous business of making sure a failover actually fails over.'},
+  meera:{id:'meera',ini:'MK',name:'Meera Krishnan',designation:'Clinical research lead',org:'Narayana Health',location:'Chennai, India',
+    since:'28 May 2026',degree:1,email:'m.krishnan@narayanahealth.org',email2:'—',
+    bio:'I design and run trials in cardiac care. Fourteen years of learning that the hardest part of clinical research is never the science — it is the follow-up.'},
+  tomas:{id:'tomas',ini:'TF',name:'Tomás Ferreira',designation:'Founder',org:'Lote 9',location:'Lisbon, Portugal',
+    since:'19 May 2026',degree:1,email:'tomas@lote9.pt',email2:'—',
+    bio:'Small studio building tools for independent winemakers. Six people, no outside money, ten years in.'},
+  sana:{id:'sana',ini:'SQ',name:'Sana Qureshi',designation:'Corporate counsel',org:'Trilegal',location:'Mumbai, India',
+    since:'11 May 2026',degree:1,email:'sana.qureshi@trilegal.com',email2:'—',
+    bio:'Cross-border M&A, mostly technology. I spend more time on regulatory approval timelines than on anything a law degree prepared me for.'},
+  weilin:{id:'weilin',ini:'WT',name:'Wei Lin Tan',designation:'Quantitative researcher',org:'GIC',location:'Singapore',
+    since:'04 May 2026',degree:1,email:'weilin.tan@gic.com.sg',email2:'—',
+    bio:'Fixed income research. I build the models nobody sees and argue about the assumptions everybody does.'},
+  rahul:{id:'rahul',ini:'RD',name:'Rahul Deshpande',designation:'Staff SRE',org:'Razorpay',location:'Pune, India',
+    since:'21 April 2026',degree:1,email:'rahul.deshpande@razorpay.com',email2:'rahul@deshpande.dev',
+    bio:'I own the on-call experience for payments infrastructure. My whole job is making sure the pager goes off for the right reasons and stays quiet for the wrong ones.'},
+  riyad:{id:'riyad',ini:'RR',name:'Riyad Rasheed',designation:'Founder',org:'Mobil80',location:'Kochi, India',
+    degree:2,via:'priya',email:'riy**@mo******.com',email2:null,
+    bio:'I founded Mobil80 in 2019. We build operational software for logistics companies across Kerala and the Gulf — dispatch, fleet maintenance, driver payroll — the systems that have to keep running whether or not anyone is watching a dashboard. I spent the decade before that as an engineer at two telcos, which is where I learned what uptime actually costs.'}
+};
+const NETWORK = ['priya','daniel','meera','tomas','sana','weilin','rahul'];
+
+const TONE = {
+  spent:{bd:'#CFC6B6',bg:'#F4F0E8',fg:'#6B6459'},
+  open :{bd:'var(--warn-line)',bg:'var(--warn-wash)',fg:'var(--warn)'},
+  back :{bd:'var(--good-line)',bg:'var(--good-wash)',fg:'var(--good)'}
+};
+
+const SEED_INV = [
+  {name:'Rahul Deshpande',email:'rahul.deshpande@razorpay.com',key:'accepted',status:'Accepted',
+   detail:'Connected 21 April 2026',sent:'18 Apr 2026',token:'1 token spent',refunded:false,tone:'spent'},
+  {name:'Nikhil Varma',email:'nikhil.varma@zerodha.com',key:'pending',status:'Pending',
+   detail:'Not opened yet',sent:'24 Aug 2026',token:'4 days left',refunded:false,tone:'open'},
+  {name:'Lucia Moretti',email:'lucia.moretti@bendingspoons.com',key:'accepted',status:'Accepted',
+   detail:'Connected 04 August 2026',sent:'02 Aug 2026',token:'1 token spent',refunded:false,tone:'spent'},
+  {name:'James Whitfield',email:'j.whitfield@kearney.com',key:'declined',status:'Declined',
+   detail:'Declined 14 August 2026',sent:'12 Aug 2026',token:'1 token returned',refunded:true,tone:'back'},
+  {name:'Anaya Sinha',email:'anaya.sinha@swiggy.in',key:'expired',status:'Expired',
+   detail:'No response in 7 days',sent:'06 Aug 2026',token:'1 token returned',refunded:true,tone:'back'}
+];
+
+const BMS_USERS = [
+  {name:'Riyad Rasheed',email:'riyad@mobil80.com',cc:'IN',tok:34,conn:41,age:'89d'},
+  {name:'Rahul Deshpande',email:'rahul.deshpande@razorpay.com',cc:'IN',tok:9,conn:26,age:'128d'},
+  {name:'Priya Nair',email:'priya.nair@atherenergy.com',cc:'IN',tok:6,conn:22,age:'63d'},
+  {name:'Sana Qureshi',email:'sana.qureshi@trilegal.com',cc:'IN',tok:12,conn:19,age:'71d'},
+  {name:'Wei Lin Tan',email:'weilin.tan@gic.com.sg',cc:'SG',tok:8,conn:17,age:'55d'},
+  {name:'Meera Krishnan',email:'m.krishnan@narayanahealth.org',cc:'IN',tok:5,conn:14,age:'34d'},
+  {name:'Daniel Osei',email:'daniel.osei@paystack.com',cc:'GH',tok:3,conn:11,age:'27d'},
+  {name:'Arjun Mehta',email:'arjun.mehta@setu.co',cc:'IN',tok:10,conn:7,age:'41d'},
+  {name:'Tomás Ferreira',email:'tomas@lote9.pt',cc:'PT',tok:25,conn:4,age:'12d'},
+  {name:'Aisha Bello',email:'a.bello@twigafoods.com',cc:'NG',tok:1,conn:3,age:'9d'}
+];
+
+const BMS_INV = [
+  {id:'inv_8Kd2mRq7',sender:'Arjun Mehta',to:'nikhil.varma@zerodha.com',type:'DIRECT',state:'PENDING',sent:'24 Aug',exp:'in 4d',tok:'held'},
+  {id:'inv_7Wp4nBv1',sender:'Arjun Mehta',to:'riyad@mobil80.com',type:'INTRO',state:'PENDING',sent:'26 Aug',exp:'in 6d',tok:'held'},
+  {id:'inv_6Ry9tKc3',sender:'Priya Nair',to:'shreya.iyer@postman.com',type:'DIRECT',state:'ACCEPTED',sent:'21 Aug',exp:'—',tok:'spent'},
+  {id:'inv_6Lm3xHd8',sender:'Wei Lin Tan',to:'marcus.chen@temasek.com.sg',type:'DIRECT',state:'ACCEPTED',sent:'19 Aug',exp:'—',tok:'spent'},
+  {id:'inv_5Qz7bNf2',sender:'Arjun Mehta',to:'j.whitfield@kearney.com',type:'DIRECT',state:'REJECTED',sent:'12 Aug',exp:'—',tok:'refunded'},
+  {id:'inv_5Ht1cJp6',sender:'Daniel Osei',to:'kwame.asante@flutterwave.com',type:'DIRECT',state:'REJECTED',sent:'10 Aug',exp:'—',tok:'refunded'},
+  {id:'inv_4Nv6dLs9',sender:'Arjun Mehta',to:'anaya.sinha@swiggy.in',type:'DIRECT',state:'EXPIRED',sent:'06 Aug',exp:'13 Aug',tok:'refunded'},
+  {id:'inv_4Bg8fMt4',sender:'Sana Qureshi',to:'v.raghavan@azb.com',type:'DIRECT',state:'EXPIRED',sent:'02 Aug',exp:'09 Aug',tok:'refunded'},
+  {id:'inv_3Ck5gPw7',sender:'Rahul Deshpande',to:'lucia.moretti@bendingspoons.com',type:'INTRO',state:'ACCEPTED',sent:'02 Aug',exp:'—',tok:'spent'}
+];
+
+const HOOKS = [
+  {t:'09:14:22',ev:'payment.captured',order:'order_QK7mR2xVn8LpTd',amt:'₹472.00',tax:'GST ₹72.00',sig:'PASS',out:'Credited 25 tokens',kind:'ok'},
+  {t:'08:51:07',ev:'payment.captured',order:'order_QK7f9WdA3sYbUe',amt:'$5.00',tax:'—',sig:'PASS',out:'Credited 25 tokens',kind:'ok'},
+  {t:'08:22:41',ev:'payment.failed',order:'order_QK6xB1nLm4TgQr',amt:'₹472.00',tax:'—',sig:'PASS',out:'No credit — card declined at issuer',kind:'warn'},
+  {t:'07:58:19',ev:'payment.captured',order:'order_QK6t3ZpKc7HvNs',amt:'₹472.00',tax:'GST ₹72.00',sig:'FAIL',out:'Rejected — HMAC mismatch, ledger untouched',kind:'fail'},
+  {t:'07:31:55',ev:'order.paid',order:'order_QK5nY8jRt2WqMx',amt:'$5.00',tax:'—',sig:'PASS',out:'Credited 25 tokens',kind:'ok'},
+  {t:'06:47:12',ev:'payment.captured',order:'order_QK5b2QvEr9TmZa',amt:'₹472.00',tax:'GST ₹72.00',sig:'PASS',out:'Credited 25 tokens',kind:'ok'},
+  {t:'06:12:38',ev:'payment.captured',order:'order_QK4h7XsDf3NkLp',amt:'₹472.00',tax:'GST ₹72.00',sig:'PASS',out:'Duplicate delivery — ignored',kind:'warn'},
+  {t:'05:39:04',ev:'order.paid',order:'order_QK4c1TgYu6BvMn',amt:'$5.00',tax:'—',sig:'PASS',out:'Credited 25 tokens',kind:'ok'}
+];
+
+const SEED_BIO = `I lead product for the payments platform at Setu, where we build the rails that let smaller Indian fintechs move money without first assembling a compliance team. My team owns onboarding, the reconciliation engine and the developer experience around both. Most of what I do day to day is decide what we are not going to build this quarter.
+
+Before Setu I spent six years at Flipkart, almost all of it on the seller side: pricing tools, settlement dashboards, dispute queues. The unglamorous internal software that a few thousand people depend on every working day and nobody writes case studies about. That stretch shaped how I think about this work more than anything since. I care much more about the second year of a product than the launch, and I have grown suspicious of any metric that only moves when someone is watching it.
+
+I started as a backend engineer and still read the code. It makes me a slower product manager and, I think, a considerably more useful one. I can tell the difference between a hard problem and an expensive one, and I have stopped asking engineers for estimates I could not have given myself.
+
+What I am glad to talk about: payments infrastructure in markets where the regulator moves faster than the incumbents; how small teams hold quality as they scale past the point where everyone knows everyone; and hiring, which I have done badly enough times to have opinions about.
+
+I am in Bengaluru, and happy to be useful to people building in this space, particularly early founders working out whether what they have is a product problem or a distribution one. That distinction took me years to learn and ten minutes to explain.`;
+
+var APP = 'both';   // build-time selector: 'portal' | 'bms' | 'both'
+var AUTH = { region: '__AWS_REGION__', clientId: '__BMS_CLIENT_ID__' };
+var AUTH_READY = AUTH.clientId.indexOf('__') !== 0;
+var S = {};   // var, not let: inline on* handlers resolve through window
+function reset() {
+  S = { balance:10, bio:SEED_BIO, invFilter:'all', bmsFilter:'ALL', modal:null, toast:null,
+        invites:SEED_INV.map((r)=>({...r})), bmsTok:Object.fromEntries(BMS_USERS.map((u)=>[u.email,u.tok])),
+        connected:{}, introAsked:false,
+        auth:{ step:'email', email:'riyad@mobil80.com', busy:false, error:null, session:null } };
+}
+reset();
+
+const SCREENS = [
+  {h:'#/signup',   t:'Sign up'},
+  {h:'#/welcome',  t:'Welcome'},
+  {h:'#/network',  t:'Network'},
+  {h:'#/p/priya',  t:'1st degree'},
+  {h:'#/p/riyad',  t:'2nd degree'},
+  {h:'#/invitations', t:'Invitations'},
+  {h:'#/gatekeeper',  t:'Gatekeeper'},
+  {h:'#/tokens',   t:'Buy tokens'},
+  {h:'#/bms/users', t:'BMS · Ledger'},
+  {h:'#/bms/invitations', t:'BMS · Invites'},
+  {h:'#/bms/webhooks', t:'BMS · Webhooks'}
+];
+
+function toast(msg) {
+  S.toast = msg; render();
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => { S.toast = null; render(); }, 2600);
+}
+function go(h) { location.hash = h; }
+
+/* ---------- shared app chrome ---------- */
+function topbar(active) {
+  return `<header class="top">
+    <div style="display:flex;align-items:center;gap:clamp(20px,4vw,44px);min-width:0;">
+      <span class="serif" style="font-size:23px;letter-spacing:.015em;">Flaunt</span>
+      <nav>
+        <button onclick="go('#/network')" ${active==='network'?'aria-current="true"':''}>Network</button>
+        <button onclick="go('#/invitations')" ${active==='invitations'?'aria-current="true"':''}>Invitations</button>
+      </nav>
+    </div>
+    <div style="display:flex;align-items:center;gap:18px;">
+      <button class="purse" onclick="go('#/tokens')" title="Buy more tokens">
+        <span style="color:var(--accent);display:flex;">${COIN}</span>
+        <span class="mono" style="font-size:13px;font-weight:500;">${S.balance}</span>
+        <span class="lbl">tokens</span>
+      </button>
+      <span class="avatar" style="width:34px;height:34px;font-size:14px;">AM</span>
+    </div>
+  </header>`;
+}
+const backlink = (label, href) =>
+  `<button onclick="go('${href}')" style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-soft);background:none;border:none;padding:0;align-self:flex-start;">${BACK_ARROW}${esc(label)}</button>`;
+
+/* ---------- screens ---------- */
+function vSignup() {
+  const words = S.bio.trim() === '' ? 0 : S.bio.trim().split(/\s+/).length;
+  const over = words > 300, near = words > 270;
+  const c = over ? 'var(--bad)' : (near ? 'var(--warn)' : 'var(--good)');
+  return `<div class="wrap" style="padding-top:clamp(28px,4vw,46px);">
+    <div class="col" style="max-width:560px;gap:26px;">
+      <div style="display:flex;align-items:baseline;justify-content:space-between;">
+        <span class="serif" style="font-size:24px;letter-spacing:.015em;">Flaunt</span>
+        <span class="lbl">Step 2 of 2</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <h1 class="big">Create your account</h1>
+        <p style="margin:0;font-size:14px;color:var(--ink-soft);">Eight fields, once. Flaunt keeps nothing else about you.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <span class="lbl">Email</span>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;border:1px solid var(--rule-2);background:var(--sunk);padding:12px 14px;">
+          <span class="mono" style="font-size:13.5px;color:var(--ink-2);">arjun.mehta@setu.co</span>
+          <span class="lbl" style="color:var(--good);">Verified</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <span class="lbl">Full name</span>
+        <input class="field" value="Arjun Mehta" aria-label="Full name">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="lbl">Designation</span><span class="lbl" style="color:var(--warn);">Required</span>
+        </div>
+        <input class="field" value="Product lead" aria-label="Designation" maxlength="100">
+        <span style="font-size:12px;color:var(--faint);">Your title. With your organisation, this is what people see before deciding to reach you.</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="lbl">Organisation</span><span class="lbl">Optional</span>
+        </div>
+        <input class="field" value="Setu" aria-label="Organisation" maxlength="100">
+        <span style="font-size:12px;color:var(--faint);">Type it however you write it &mdash; there is no list to pick from.</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="lbl">Location</span><span class="lbl">Optional</span>
+        </div>
+        <input class="field" value="Bengaluru, India" aria-label="Location" maxlength="80">
+        <span style="font-size:12px;color:var(--faint);">Shown to your connections. It does not affect what you are charged &mdash; that follows the country below.</span>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <span class="lbl">Country</span><span class="lbl" style="color:var(--warn);">Required</span>
+        </div>
+        <select class="field" aria-label="Country">
+          <option>India</option><option>Singapore</option><option>Portugal</option>
+          <option>Ghana</option><option>United Arab Emirates</option><option>United Kingdom</option><option>United States</option>
+        </select>
+        <span style="font-size:12px;color:var(--faint);">Detected from your connection. Change it if that is wrong — it sets how you are billed for tokens.</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <span class="lbl">Professional description</span>
+        <textarea class="field" id="bio" oninput="S.bio=this.value;paintCount();" aria-label="Professional description"
+          style="height:176px;resize:vertical;line-height:1.62;font-size:13.5px;color:var(--ink-2);">${esc(S.bio)}</textarea>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-top:3px;">
+          <div style="height:2px;background:var(--rule);"><div id="bar-fill" style="height:2px;width:${Math.min(100,Math.round(words/300*100))}%;background:${c};"></div></div>
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;">
+            <span style="font-size:12px;color:var(--ink-soft);">A description, not a résumé.</span>
+            <span class="mono" id="bar-num" style="font-size:12.5px;font-weight:500;color:${c};">${words} / 300 words</span>
+          </div>
+        </div>
+      </div>
+      <button class="btn" style="align-self:flex-start;" onclick="go('#/welcome')">Create account</button>
+    </div>
+  </div>`;
+}
+function paintCount() {
+  const w = S.bio.trim() === '' ? 0 : S.bio.trim().split(/\s+/).length;
+  const over = w > 300, near = w > 270;
+  const c = over ? 'var(--bad)' : (near ? 'var(--warn)' : 'var(--good)');
+  const f = document.getElementById('bar-fill'), n = document.getElementById('bar-num');
+  if (f) { f.style.width = Math.min(100, Math.round(w/300*100)) + '%'; f.style.background = c; }
+  if (n) { n.textContent = w + ' / 300 words'; n.style.color = c; }
+}
+
+function vWelcome() {
+  const coins = Array.from({length:10}, () =>
+    `<span style="color:var(--accent);display:flex;"><svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.2"/></svg></span>`).join('');
+  return `<div class="wrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;">
+    <div style="max-width:540px;display:flex;flex-direction:column;align-items:center;gap:38px;text-align:center;">
+      <span class="serif" style="font-size:24px;letter-spacing:.015em;">Flaunt</span>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <h1 class="serif" style="margin:0;font-size:clamp(30px,6vw,40px);font-weight:400;letter-spacing:-.02em;">Welcome, Arjun.</h1>
+        <p style="margin:0;font-size:15px;color:var(--ink-soft);line-height:1.65;text-wrap:pretty;">Your account is verified. We have put ten tokens in it to get you started.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:16px;border-top:1px solid var(--rule-2);border-bottom:1px solid var(--rule-2);padding:30px 0;width:100%;">
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">${coins}</div>
+        <span class="lbl" style="color:var(--accent);">10 tokens</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <p class="serif" style="margin:0;font-size:20px;line-height:1.5;">Every invitation you send costs one token.</p>
+        <p style="margin:0;font-size:13.5px;color:var(--ink-soft);line-height:1.6;text-wrap:pretty;">If it is declined, or goes unanswered for seven days, the token comes back to you. You only pay for the connections you actually make.</p>
+      </div>
+      <button class="btn" onclick="go('#/network')">Go to your network</button>
+    </div>
+  </div>`;
+}
+
+function vNetwork() {
+  const rows = NETWORK.map((id) => {
+    const p = PEOPLE[id];
+    return `<button class="row-link" onclick="go('#/p/${p.id}')">
+      <span class="avatar" style="width:38px;height:38px;font-size:14px;">${p.ini}</span>
+      <span style="display:flex;flex-direction:column;gap:1px;flex-grow:1;min-width:0;">
+        <span class="serif" style="font-size:17.5px;">${esc(p.name)}</span>
+        <span style="font-size:12.5px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${roleLine(p)}</span>
+      </span>
+      <span style="display:none;flex-direction:column;align-items:flex-end;gap:1px;" class="meta">
+        <span style="font-size:12.5px;color:var(--ink-soft);">${esc(p.location || '')}</span>
+        <span class="mono" style="font-size:11.5px;color:var(--faint);">${esc(p.since)}</span>
+      </span>
+      <span style="color:var(--ghost);display:flex;">${CHEV}</span>
+    </button>`;
+  }).join('');
+  return topbar('network') + `<div class="wrap"><div class="col">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <h1 class="big">Your network</h1>
+      <span style="font-size:13px;color:var(--ink-soft);">7 direct · 63 within reach</span>
+    </div>
+    <button onclick="go('#/p/riyad')" style="display:flex;align-items:center;gap:11px;border:1px solid var(--rule-2);background:var(--raised);padding:11px 14px;width:100%;text-align:left;">
+      <span style="color:var(--faint);display:flex;">${SEARCH}</span>
+      <span style="font-size:13.5px;color:var(--faint);">Search people by name — try “Riyad”</span>
+    </button>
+    <div style="display:flex;flex-direction:column;">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding-bottom:11px;border-bottom:1px solid var(--rule-2);">
+        <span class="lbl">Direct connections</span>
+        <button onclick="openInvite()" style="background:none;border:none;padding:0;font-size:12.5px;color:var(--accent);">+ Invite someone</button>
+      </div>
+      ${rows}
+    </div>
+  </div></div>`;
+}
+
+function vProfile(id) {
+  const p = PEOPLE[id];
+  if (!p) return vNetwork();
+  const first = p.degree === 1 || S.connected[id];
+  const badge = first
+    ? `<span class="chip" style="border-color:var(--good-line);background:var(--good-wash);"><span class="dot" style="background:var(--good);"></span><span class="lbl" style="color:var(--good);">1st degree</span></span>`
+    : `<span class="chip" style="border-color:var(--warn-line);background:var(--warn-wash);"><span class="dot" style="background:var(--warn);"></span><span class="lbl" style="color:var(--warn);">2nd degree</span></span>`;
+  const maskedEmail = 'riy<span style="color:var(--ghost);">**</span>@mo<span style="color:var(--ghost);">******</span>.com';
+  const contact = first ? `
+    <div class="grid2">
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <span style="font-size:11.5px;color:var(--faint);">Primary email</span>
+        <span class="mono" style="font-size:13.5px;">${esc(p.email)}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <span style="font-size:11.5px;color:var(--faint);">Secondary email</span>
+        <span class="mono" style="font-size:13.5px;color:${p.email2==='—'?'var(--faint)':'var(--ink)'};">${esc(p.email2||'—')}</span>
+      </div>
+    </div>` : `
+    <div class="grid2">
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <span style="font-size:11.5px;color:var(--faint);">Primary email</span>
+        <span class="mono" style="font-size:13.5px;letter-spacing:.01em;">${maskedEmail}</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <span style="font-size:11.5px;color:var(--faint);">Secondary email</span>
+        <span style="font-size:13px;color:var(--faint);font-style:italic;">Hidden at this degree</span>
+      </div>
+    </div>
+    <span style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Contact details unlock only when you are directly connected.</span>`;
+
+  const via = p.via ? PEOPLE[p.via] : null;
+  const action = first ? `
+    <div style="display:flex;align-items:center;gap:9px;border-top:1px solid var(--rule);padding-top:20px;">
+      <span style="color:var(--good);display:flex;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12.5 L10 17.5 L19 7"/></svg></span>
+      <span style="font-size:13px;color:var(--ink-soft);">Connected${p.since?' since '+esc(p.since):''}. Full contact details are visible to you both.</span>
+    </div>` : `
+    <div style="border:1px solid var(--rule-2);background:var(--raised);padding:24px 26px;display:flex;flex-direction:column;gap:18px;">
+      <div style="display:flex;align-items:center;gap:11px;">
+        <span class="avatar" style="width:30px;height:30px;font-size:12px;">${via.ini}</span>
+        <span style="font-size:13.5px;color:var(--ink-2);">Connected through <strong style="font-weight:500;">${esc(via.name)}</strong></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
+        ${S.introAsked
+          ? `<span class="chip" style="border-color:var(--warn-line);background:var(--warn-wash);padding:12px 18px;"><span class="dot" style="background:var(--warn);"></span><span style="font-size:13px;color:var(--warn);">Waiting on ${esc(via.name)}</span></span>
+             <button class="btn ghost" onclick="go('#/gatekeeper')">See what ${esc(via.name.split(' ')[0])} sees →</button>`
+          : `<button class="btn" onclick="requestIntro('${p.id}')"><span style="display:flex;">${COIN}</span>Request introduction — 1 token</button>
+             <span style="font-size:12.5px;color:var(--ink-soft);line-height:1.5;max-width:34ch;">${esc(via.name.split(' ')[0])} approves first. If ${esc(via.name.split(' ')[0])} declines, or ${esc(p.name.split(' ')[0])} does not respond within 7 days, your token comes back.</span>`}
+      </div>
+    </div>`;
+
+  return topbar('network') + `<div class="wrap" style="padding-top:clamp(24px,3vw,40px);"><div class="col" style="max-width:700px;gap:32px;">
+    ${backlink(first?'Network':'Search results','#/network')}
+    <div style="display:flex;align-items:flex-start;gap:22px;flex-wrap:wrap;">
+      <span class="avatar" style="width:84px;height:84px;font-size:29px;">${p.ini}</span>
+      <div style="display:flex;flex-direction:column;gap:5px;padding-top:6px;">
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+          <h1 class="serif" style="margin:0;font-size:clamp(27px,5vw,34px);font-weight:400;letter-spacing:-.015em;">${esc(p.name)}</h1>
+          ${badge}
+        </div>
+        <span style="font-size:14.5px;color:var(--ink-2);">${roleLine(p)}</span>
+        ${p.location ? `<span style="font-size:13px;color:var(--ink-soft);">${esc(p.location)}</span>` : ''}
+      </div>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <span class="lbl">Professional description</span>
+      <p style="margin:0;font-size:15px;line-height:1.72;color:var(--ink-2);max-width:62ch;text-wrap:pretty;">${esc(p.bio)}</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:14px;border-top:1px solid var(--rule-2);padding-top:24px;">
+      <div style="display:flex;align-items:center;gap:9px;"><span class="lbl">Contact</span>${first?'':`<span style="color:var(--faint);display:flex;">${LOCK}</span>`}</div>
+      ${contact}
+    </div>
+    ${action}
+  </div></div>`;
+}
+
+function vInvitations() {
+  const TABS = [['all','All'],['pending','Open'],['accepted','Accepted'],['declined','Declined'],['expired','Expired']];
+  const tabs = TABS.map(([id,label]) => {
+    const n = id==='all' ? S.invites.length : S.invites.filter((r)=>r.key===id).length;
+    const on = S.invFilter===id;
+    return `<button onclick="S.invFilter='${id}';render();" aria-current="${on}"
+      style="background:none;border:none;border-bottom:1.5px solid ${on?'var(--accent)':'transparent'};color:${on?'var(--ink)':'var(--ink-soft)'};font-weight:${on?500:400};font-size:13px;padding:0 0 10px;display:flex;align-items:center;gap:7px;">
+      ${label}<span class="mono" style="font-size:11px;color:var(--faint);">${n}</span></button>`;
+  }).join('');
+  const shown = S.invites.filter((r)=>S.invFilter==='all'||r.key===S.invFilter);
+  const refunds = S.invites.filter((r)=>r.refunded).length;
+  const rows = shown.map((r) => {
+    const t = TONE[r.tone];
+    return `<div style="display:flex;align-items:center;gap:18px;padding:18px 0;border-bottom:1px solid var(--rule);flex-wrap:wrap;">
+      <div style="display:flex;flex-direction:column;gap:2px;width:min(268px,100%);flex-shrink:0;">
+        <span class="serif" style="font-size:17px;">${esc(r.name)}</span>
+        <span class="mono" style="font-size:11.5px;color:var(--faint);overflow:hidden;text-overflow:ellipsis;">${esc(r.email)}</span>
+      </div>
+      <div style="width:132px;flex-shrink:0;">
+        <span class="chip" style="border-color:${t.bd};background:${t.bg};"><span class="dot" style="background:${t.fg};"></span><span class="lbl" style="color:${t.fg};">${esc(r.status)}</span></span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:2px;flex-grow:1;min-width:140px;">
+        <span style="font-size:12.5px;color:var(--ink-2);">${esc(r.detail)}</span>
+        <span class="mono" style="font-size:11.5px;color:var(--faint);">sent ${esc(r.sent)}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:7px;width:148px;flex-shrink:0;justify-content:flex-end;">
+        ${r.refunded?`<span style="color:var(--good);display:flex;">${RETURN}</span>`:''}
+        <span style="font-size:12.5px;color:${r.refunded?'var(--good)':'var(--ink-soft)'};font-weight:${r.refunded?500:400};">${esc(r.token)}</span>
+      </div>
+    </div>`;
+  }).join('') || `<p style="margin:24px 0;font-size:13.5px;color:var(--faint);">Nothing in this state.</p>`;
+
+  return topbar('invitations') + `<div class="wrap"><div class="col wide" style="gap:26px;">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <h1 class="big">Invitations</h1>
+      <div style="display:flex;align-items:center;gap:8px;color:var(--good);">
+        ${RETURN}<span style="font-size:13px;">${refunds} token${refunds===1?'':'s'} returned to you, automatically</span>
+      </div>
+    </div>
+    <div style="display:flex;gap:24px;border-bottom:1px solid var(--rule-2);flex-wrap:wrap;">${tabs}</div>
+    <div style="display:flex;flex-direction:column;">${rows}</div>
+    <button class="btn" style="align-self:flex-start;" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>
+  </div></div>`;
+}
+
+function vGatekeeper() {
+  const node = (ini,name,label,hot) => `<div style="display:flex;flex-direction:column;align-items:center;gap:9px;width:150px;">
+    <span class="avatar" style="width:52px;height:52px;font-size:18px;${hot?'background:var(--accent);color:var(--paper);':''}">${ini}</span>
+    <span style="font-size:13px;font-weight:500;text-align:center;">${esc(name)}</span>
+    <span class="lbl" ${hot?'style="color:var(--accent);"':''}>${esc(label)}</span></div>`;
+  return `<header class="top">
+      <div style="display:flex;align-items:center;gap:clamp(20px,4vw,44px);">
+        <span class="serif" style="font-size:23px;letter-spacing:.015em;">Flaunt</span>
+        <nav><button>Network</button><button aria-current="true">Invitations</button></nav>
+      </div>
+      <div style="display:flex;align-items:center;gap:18px;">
+        <span class="purse"><span style="color:var(--accent);display:flex;">${COIN}</span><span class="mono" style="font-size:13px;font-weight:500;">6</span><span class="lbl">tokens</span></span>
+        <span class="avatar" style="width:34px;height:34px;font-size:14px;">PN</span>
+      </div>
+    </header>
+    <div class="wrap"><div class="col" style="max-width:680px;gap:34px;">
+      <div style="background:var(--sunk);border:1px solid var(--rule-2);padding:10px 14px;font-size:12.5px;color:var(--ink-soft);">
+        You are looking at Priya Nair’s account — this is the gatekeeper’s side of the request.
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <span class="lbl">Introduction request</span>
+        <h1 class="serif" style="margin:0;font-size:clamp(24px,4.4vw,30px);font-weight:400;line-height:1.32;letter-spacing:-.012em;text-wrap:balance;">Arjun Mehta would like an introduction to Riyad Rasheed.</h1>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;padding:26px 0;border-top:1px solid var(--rule-2);border-bottom:1px solid var(--rule-2);flex-wrap:wrap;gap:8px;">
+        ${node('AM','Arjun Mehta','Asking',false)}
+        <div style="height:1px;background:var(--rule-2);flex-grow:1;min-width:24px;"></div>
+        ${node('PN','You','Deciding',true)}
+        <div style="height:1px;background:var(--rule-2);flex-grow:1;min-width:24px;"></div>
+        ${node('RR','Riyad Rasheed','Would be asked',false)}
+      </div>
+      <div class="grid2">
+        <div style="border:1px solid var(--rule-2);background:var(--raised);padding:19px 20px;display:flex;flex-direction:column;gap:8px;">
+          <span class="serif" style="font-size:18px;">Arjun Mehta</span>
+          <span style="font-size:12.5px;color:var(--ink-soft);">Product lead · Setu · Bengaluru</span>
+          <p style="margin:4px 0 0;font-size:12.5px;line-height:1.62;color:var(--ink-2);">Payments platform. Connected to you since 14 June 2026.</p>
+        </div>
+        <div style="border:1px solid var(--rule-2);background:var(--raised);padding:19px 20px;display:flex;flex-direction:column;gap:8px;">
+          <span class="serif" style="font-size:18px;">Riyad Rasheed</span>
+          <span style="font-size:12.5px;color:var(--ink-soft);">Founder · Mobil80 · Kochi</span>
+          <p style="margin:4px 0 0;font-size:12.5px;line-height:1.62;color:var(--ink-2);">Logistics software. Connected to you since 03 March 2026.</p>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <p style="margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.65;text-wrap:pretty;">Riyad hears nothing unless you approve. If you decline, Arjun is told you passed — not why — and his token is returned.</p>
+        <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+          <button class="btn" onclick="gateDecide(true)">Approve introduction</button>
+          <button class="btn ghost" onclick="gateDecide(false)">Decline</button>
+        </div>
+      </div>
+    </div></div>`;
+}
+
+function vTokens() {
+  return topbar('') + `<div class="wrap"><div class="col wide" style="gap:30px;">
+    ${backlink('Network','#/network')}
+    <div style="display:flex;flex-direction:column;gap:9px;">
+      <h1 class="big">Buy tokens</h1>
+      <p style="margin:0;font-size:14px;color:var(--ink-soft);max-width:58ch;text-wrap:pretty;">Twenty-five tokens per bundle. What you pay is set by the country on your account — yours is India.</p>
+    </div>
+    <div class="grid2" style="align-items:start;">
+      <div style="border:1.5px solid var(--accent);background:var(--raised);display:flex;flex-direction:column;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 24px;border-bottom:1px solid var(--rule);background:var(--accent-wash);">
+          <span class="lbl" style="color:var(--accent);">Your price · India</span>
+          <span class="mono" style="font-size:11.5px;color:var(--accent);">INR</span>
+        </div>
+        <div style="padding:26px 24px;display:flex;flex-direction:column;gap:22px;">
+          <div style="display:flex;align-items:baseline;gap:10px;">
+            <span class="serif" style="font-size:38px;letter-spacing:-.02em;">25</span><span style="font-size:14px;color:var(--ink-soft);">tokens</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:11px;">
+            <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;color:var(--ink-2);">25 tokens</span><span class="mono" style="font-size:13.5px;">₹400.00</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;color:var(--ink-2);">GST at 18%</span><span class="mono" style="font-size:13.5px;">₹72.00</span></div>
+            <div style="height:1px;background:var(--rule-2);margin:3px 0;"></div>
+            <div style="display:flex;justify-content:space-between;"><span style="font-size:14px;font-weight:500;">Total</span><span class="mono" style="font-size:19px;font-weight:500;">₹472.00</span></div>
+          </div>
+          <button class="btn" style="width:100%;" onclick="buyTokens()">Pay ₹472.00</button>
+          <span style="font-size:11.5px;color:var(--faint);text-align:center;">Razorpay · GST invoice emailed on payment</span>
+        </div>
+      </div>
+      <div style="border:1px solid var(--rule-2);background:#FAF7F1;display:flex;flex-direction:column;">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 24px;border-bottom:1px solid var(--rule);">
+          <span class="lbl">Outside India</span><span class="mono" style="font-size:11.5px;color:var(--faint);">USD</span>
+        </div>
+        <div style="padding:26px 24px;display:flex;flex-direction:column;gap:22px;">
+          <div style="display:flex;align-items:baseline;gap:10px;">
+            <span class="serif" style="font-size:38px;letter-spacing:-.02em;color:var(--ink-soft);">25</span><span style="font-size:14px;color:var(--faint);">tokens</span>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:11px;">
+            <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;color:var(--ink-soft);">25 tokens</span><span class="mono" style="font-size:13.5px;color:var(--ink-soft);">$5.00</span></div>
+            <div style="display:flex;justify-content:space-between;"><span style="font-size:13.5px;color:var(--faint);">No regional tax</span><span class="mono" style="font-size:13.5px;color:var(--faint);">—</span></div>
+            <div style="height:1px;background:var(--rule);margin:3px 0;"></div>
+            <div style="display:flex;justify-content:space-between;"><span style="font-size:14px;font-weight:500;color:var(--ink-soft);">Total</span><span class="mono" style="font-size:19px;font-weight:500;color:var(--ink-soft);">$5.00</span></div>
+          </div>
+          <button class="btn" disabled style="width:100%;">Not your region</button>
+          <span style="font-size:11.5px;color:var(--faint);text-align:center;">Shown so you can see the difference</span>
+        </div>
+      </div>
+    </div>
+    <p style="margin:0;border-top:1px solid var(--rule);padding-top:20px;font-size:12.5px;color:var(--ink-soft);line-height:1.6;max-width:76ch;">Your country was set when you signed up and is what decides the tax line. Tokens never expire, and they are not refundable once an invitation has been accepted.</p>
+  </div></div>`;
+}
+
+/* ---------- BMS ---------- */
+function bmsShell(active, inner) {
+  const nav = [['users','User ledger'],['invitations','Invitations'],['webhooks','Webhooks']].map(([k,l]) =>
+    `<button onclick="go('#/bms/${k}')" ${active===k?'aria-current="true"':''}>${l}</button>`).join('');
+  return `<div class="bms">
+    <header class="bms-top">
+      <div style="display:flex;align-items:center;gap:14px;">
+        <span style="font-size:13px;font-weight:600;letter-spacing:.02em;">Flaunt BMS</span>
+        <span class="mono" style="font-size:10px;letter-spacing:.08em;border:1px solid #4A5260;color:#9BA5B2;padding:2px 7px;">PRODUCTION</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:14px;">
+        <span class="mono" style="font-size:11.5px;color:#9BA5B2;">${(session() && session().email) || 'riyad@mobil80.com'}</span>
+        <span class="mono" style="font-size:10px;letter-spacing:.08em;background:var(--bms-accent);color:#DCE6F2;padding:2px 7px;">ROOT</span>
+        ${APP === 'bms' ? `<button onclick="signOut()" style="background:none;border:1px solid #4A5260;color:#9BA5B2;font-size:11px;padding:2px 9px;">Sign out</button>` : ''}
+      </div>
+    </header>
+    <div class="bms-body">
+      <nav class="bms-nav"><span class="lbl" style="padding:0 16px 9px;">Operations</span>${nav}
+        <button style="pointer-events:none;">Digests</button></nav>
+      <main class="bms-main">${inner}</main>
+    </div>
+  </div>`;
+}
+
+function vBmsUsers() {
+  const rows = BMS_USERS.map((u) => `<tr>
+    <td style="font-size:12.5px;font-weight:500;white-space:nowrap;">${esc(u.name)}</td>
+    <td class="mono" style="font-size:11.5px;color:var(--bms-mute);">${esc(u.email)}</td>
+    <td class="mono" style="font-size:11.5px;color:var(--bms-soft);">${u.cc}</td>
+    <td class="mono" style="font-size:13px;font-weight:600;">${S.bmsTok[u.email]}</td>
+    <td class="mono" style="font-size:12px;color:var(--bms-soft);">${u.conn}</td>
+    <td class="mono" style="font-size:11.5px;color:var(--bms-mute);">${u.age}</td>
+    <td><span style="display:flex;align-items:center;gap:5px;">
+      <button class="step" onclick="adjust('${u.email}',-1)" aria-label="Remove a token from ${esc(u.name)}">−</button>
+      <span class="mono" style="width:46px;height:24px;border:1px solid var(--bms-rule-2);display:inline-flex;align-items:center;justify-content:center;font-size:12px;">${S.bmsTok[u.email]}</span>
+      <button class="step" onclick="adjust('${u.email}',1)" aria-label="Add a token for ${esc(u.name)}">+</button>
+    </span></td></tr>`).join('');
+  return bmsShell('users', `
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div style="display:flex;flex-direction:column;gap:3px;">
+        <h1 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em;">User ledger</h1>
+        <span style="font-size:12px;color:var(--bms-mute);">1,284 registered accounts</span>
+      </div>
+      <span class="pill">Country: All</span>
+    </div>
+    <div class="stats">
+      <div><span class="lbl">Users · India</span><span class="mono" style="font-size:19px;font-weight:600;">812</span></div>
+      <div><span class="lbl">Users · International</span><span class="mono" style="font-size:19px;font-weight:600;">472</span></div>
+      <div><span class="lbl">Tokens outstanding</span><span class="mono" style="font-size:19px;font-weight:600;">9,140</span></div>
+      <div><span class="lbl">Refunded · 30 days</span><span class="mono" style="font-size:19px;font-weight:600;color:var(--bms-good);">318</span></div>
+    </div>
+    <div class="tblwrap"><table>
+      <thead><tr><th>Name</th><th>Primary email</th><th>Country</th><th>Tokens</th><th>Connections</th><th>Age</th><th>Adjust balance</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+    <p style="margin:0;font-size:11.5px;color:var(--bms-mute);">Every manual adjustment is written to the user’s token ledger with your address as the actor, and appears in the next daily digest.</p>`);
+}
+
+function vBmsInv() {
+  const T = {PENDING:['var(--bms-warn-line)','var(--bms-warn-wash)','var(--bms-warn)'],
+             ACCEPTED:['var(--bms-good-line)','var(--bms-good-wash)','var(--bms-good)'],
+             REJECTED:['var(--bms-bad-line)','var(--bms-bad-wash)','var(--bms-bad)'],
+             EXPIRED:['#D3D9DF','#F1F4F6','#5C6675']};
+  const pills = ['ALL','PENDING','ACCEPTED','REJECTED','EXPIRED'].map((k) => {
+    const n = k==='ALL' ? BMS_INV.length : BMS_INV.filter((r)=>r.state===k).length;
+    return `<button class="pill" onclick="S.bmsFilter='${k}';render();" aria-current="${S.bmsFilter===k}">
+      ${k==='ALL'?'All':k.charAt(0)+k.slice(1).toLowerCase()} <span class="mono" style="font-size:11px;opacity:.75;">${n}</span></button>`;
+  }).join('');
+  const shown = BMS_INV.filter((r)=>S.bmsFilter==='ALL'||r.state===S.bmsFilter);
+  const rows = shown.map((r) => {
+    const [bd,bg,fg] = T[r.state];
+    return `<tr>
+      <td class="mono" style="font-size:11px;color:var(--bms-mute);">${r.id}</td>
+      <td style="font-size:12px;white-space:nowrap;">${esc(r.sender)}</td>
+      <td class="mono" style="font-size:11px;color:var(--bms-soft);">${esc(r.to)}</td>
+      <td class="mono" style="font-size:10.5px;letter-spacing:.05em;color:var(--bms-mute);">${r.type}</td>
+      <td><span class="chip" style="border-color:${bd};background:${bg};padding:2px 8px;"><span class="dot" style="background:${fg};"></span><span class="mono" style="font-size:10px;letter-spacing:.05em;color:${fg};">${r.state}</span></span></td>
+      <td class="mono" style="font-size:11px;color:var(--bms-mute);">${r.sent}</td>
+      <td class="mono" style="font-size:11px;color:${r.state==='PENDING'?'var(--bms-warn)':'var(--bms-mute)'};">${r.exp}</td>
+      <td style="font-size:11.5px;color:${r.tok==='refunded'?'var(--bms-good)':'var(--bms-soft)'};">${r.tok}</td></tr>`;
+  }).join('');
+  return bmsShell('invitations', `
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <h1 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em;">Invitation console</h1>
+      <span style="font-size:12px;color:var(--bms-mute);">Network-wide. TTL refunds are issued by the stream handler, not from here.</span>
+    </div>
+    <div style="display:flex;gap:7px;flex-wrap:wrap;">${pills}</div>
+    <div class="tblwrap"><table>
+      <thead><tr><th>Invite id</th><th>Sender</th><th>Recipient</th><th>Type</th><th>State</th><th>Sent</th><th>Expires</th><th>Token</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <span style="font-size:11.5px;color:var(--bms-mute);">Showing ${shown.length} of ${BMS_INV.length}</span>`);
+}
+
+function vBmsHooks() {
+  const rows = HOOKS.map((h) => {
+    const pass = h.sig === 'PASS';
+    const fail = h.kind === 'fail';
+    return `<tr style="${fail?'background:#FDF6F6;':''}">
+      <td class="mono" style="font-size:11px;color:var(--bms-mute);border-left:2px solid ${fail?'var(--bms-bad)':'transparent'};">${h.t}</td>
+      <td class="mono" style="font-size:11.5px;">${h.ev}</td>
+      <td class="mono" style="font-size:11px;color:var(--bms-mute);">${h.order}</td>
+      <td class="mono" style="font-size:12px;font-weight:500;">${h.amt}</td>
+      <td class="mono" style="font-size:11.5px;color:${h.tax==='—'?'#96A0AC':'var(--bms-soft)'};">${h.tax}</td>
+      <td><span class="chip" style="padding:2px 8px;border-color:${pass?'var(--bms-good-line)':'var(--bms-bad-line)'};background:${pass?'var(--bms-good-wash)':'var(--bms-bad-wash)'};"><span class="mono" style="font-size:10px;letter-spacing:.06em;color:${pass?'var(--bms-good)':'var(--bms-bad)'};">${h.sig}</span></span></td>
+      <td style="font-size:11.5px;color:${fail?'var(--bms-bad)':(h.kind==='warn'?'var(--bms-warn)':'var(--bms-soft)')};">${esc(h.out)}</td></tr>`;
+  }).join('');
+  return bmsShell('webhooks', `
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div style="display:flex;flex-direction:column;gap:3px;">
+        <h1 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em;">Razorpay webhooks</h1>
+        <span class="mono" style="font-size:11.5px;color:var(--bms-mute);">POST /webhooks/razorpay · HMAC-SHA256</span>
+      </div>
+      <span class="chip" style="border-color:var(--bms-good-line);background:var(--bms-good-wash);padding:6px 12px;">
+        <span class="dot" style="background:var(--bms-good);"></span><span class="mono" style="font-size:11px;letter-spacing:.05em;color:var(--bms-good);">LIVE</span></span>
+    </div>
+    <div class="stats">
+      <div><span class="lbl">Captured · INR</span><span class="mono" style="font-size:19px;font-weight:600;">₹14,632.00</span></div>
+      <div><span class="lbl">Of which GST</span><span class="mono" style="font-size:19px;font-weight:600;color:var(--bms-accent);">₹2,232.00</span></div>
+      <div><span class="lbl">Captured · USD</span><span class="mono" style="font-size:19px;font-weight:600;">$65.00</span></div>
+      <div><span class="lbl">Signature failures</span><span class="mono" style="font-size:19px;font-weight:600;color:var(--bms-bad);">1</span></div>
+    </div>
+    <div class="tblwrap"><table>
+      <thead><tr><th>Time</th><th>Event</th><th>Order id</th><th>Amount</th><th>Tax</th><th>Signature</th><th>Outcome</th></tr></thead>
+      <tbody>${rows}</tbody></table></div>
+    <p style="margin:0;font-size:11.5px;color:var(--bms-mute);max-width:96ch;">A failed signature never reaches the ledger — the request is rejected before any balance is touched. Repeat deliveries of an event already processed are recorded and ignored.</p>`);
+}
+
+/* ---------- actions ---------- */
+function openInvite() { S.modal = 'invite'; render(); }
+function closeModal() { S.modal = null; render(); }
+function sendInvite() {
+  const el = document.getElementById('inv-email');
+  const email = (el && el.value.trim()) || 'nikhil.varma@zerodha.com';
+  if (S.balance < 1) { toast('Not enough tokens — buy a bundle first.'); return; }
+  S.balance -= 1;
+  S.invites.unshift({name:email.split('@')[0].replace(/[._]/g,' ').replace(/\b\w/g,(m)=>m.toUpperCase()),
+    email, key:'pending', status:'Pending', detail:'Just sent', sent:'today',
+    token:'7 days left', refunded:false, tone:'open'});
+  S.modal = null; S.invFilter = 'all';
+  go('#/invitations'); toast('Invitation sent. 1 token held — balance ' + S.balance + '.');
+}
+function requestIntro(id) {
+  if (S.balance < 1) { toast('Not enough tokens — buy a bundle first.'); return; }
+  S.balance -= 1; S.introAsked = true;
+  const p = PEOPLE[id], via = PEOPLE[p.via];
+  S.invites.unshift({name:p.name, email:'introduction via ' + via.name, key:'pending', status:'With ' + via.name.split(' ')[0],
+    detail:'Waiting on ' + via.name + ' to approve', sent:'today', token:'7 days left', refunded:false, tone:'open'});
+  render(); toast('Requested. 1 token held — balance ' + S.balance + '.');
+}
+function gateDecide(approve) {
+  const rec = S.invites.find((r) => r.email.startsWith('introduction via'));
+  if (approve) {
+    if (rec) { rec.status = 'Sent to Riyad'; rec.detail = 'Priya approved — waiting on Riyad'; }
+    toast('Approved. Riyad has been emailed Arjun’s profile.');
+  } else {
+    S.balance += 1;
+    if (rec) { rec.key='declined'; rec.status='Declined'; rec.detail='Priya passed on the introduction';
+               rec.token='1 token returned'; rec.refunded=true; rec.tone='back'; }
+    S.introAsked = false;
+    toast('Declined. Arjun’s token was returned — balance ' + S.balance + '.');
+  }
+  go('#/invitations');
+}
+function buyTokens() { S.balance += 25; toast('Paid ₹472.00. 25 tokens added — balance ' + S.balance + '.'); }
+function adjust(email, d) {
+  S.bmsTok[email] = Math.max(0, S.bmsTok[email] + d);
+  render();
+}
+
+
+/* ---------- BMS sign-in: passwordless email OTP (Cognito CUSTOM_AUTH) ---------- */
+const IDP = () => `https://cognito-idp.${AUTH.region}.amazonaws.com/`;
+async function idp(target, body) {
+  const res = await fetch(IDP(), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-amz-json-1.1',
+      'X-Amz-Target': `AWSCognitoIdentityProviderService.${target}`
+    },
+    body: JSON.stringify(body)
+  });
+  const text = await res.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch (e) { /* non-JSON error body */ }
+  if (!res.ok) {
+    const type = String(data.__type || '').split('#').pop();
+    throw Object.assign(new Error(data.message || type || 'Sign-in failed'), { type });
+  }
+  return data;
+}
+function session() {
+  try { return JSON.parse(sessionStorage.getItem('flaunt.bms') || 'null'); } catch (e) { return null; }
+}
+function signedIn() {
+  const s = session();
+  return !!(s && s.idToken && s.expiresAt > Date.now());
+}
+function signOut() {
+  try { sessionStorage.removeItem('flaunt.bms'); } catch (e) {}
+  S.auth = { step: 'email', email: 'riyad@mobil80.com', busy: false, error: null, session: null };
+  render();
+}
+async function sendCode() {
+  const el = document.getElementById('auth-email');
+  const email = (el ? el.value : '').trim().toLowerCase();
+  if (!email) { S.auth.error = 'Enter your email address.'; render(); return; }
+  S.auth.busy = true; S.auth.error = null; S.auth.email = email; render();
+  try {
+    const r = await idp('InitiateAuth', {
+      AuthFlow: 'CUSTOM_AUTH', ClientId: AUTH.clientId, AuthParameters: { USERNAME: email }
+    });
+    S.auth.session = r.Session; S.auth.step = 'code';
+  } catch (e) {
+    // preventUserExistenceErrors is on, so an unknown address fails here the
+    // same way a known one would. Say the neutral thing rather than confirming
+    // whether the account exists.
+    S.auth.error = e.type === 'NotAuthorizedException'
+      ? 'That address cannot sign in to this console.'
+      : (e.message || 'Could not send the code. Try again.');
+  } finally { S.auth.busy = false; render(); }
+}
+async function verifyCode() {
+  const el = document.getElementById('auth-code');
+  const code = (el ? el.value : '').trim();
+  if (code.length !== 6) { S.auth.error = 'Enter the six-digit code.'; render(); return; }
+  S.auth.busy = true; S.auth.error = null; render();
+  try {
+    const r = await idp('RespondToAuthChallenge', {
+      ChallengeName: 'CUSTOM_CHALLENGE', ClientId: AUTH.clientId, Session: S.auth.session,
+      ChallengeResponses: { USERNAME: S.auth.email, ANSWER: code }
+    });
+    if (r.AuthenticationResult && r.AuthenticationResult.IdToken) {
+      const a = r.AuthenticationResult;
+      sessionStorage.setItem('flaunt.bms', JSON.stringify({
+        idToken: a.IdToken, email: S.auth.email,
+        expiresAt: Date.now() + (a.ExpiresIn || 3600) * 1000
+      }));
+      S.auth.step = 'email'; S.auth.session = null;
+    } else {
+      // Cognito re-challenged: the code was wrong and rounds remain.
+      S.auth.session = r.Session;
+      S.auth.error = 'That code was not right. Try again.';
+    }
+  } catch (e) {
+    S.auth.error = e.type === 'NotAuthorizedException'
+      ? 'That code has expired or been used. Request a new one.'
+      : (e.message || 'Could not verify the code.');
+    if (e.type === 'NotAuthorizedException') { S.auth.step = 'email'; S.auth.session = null; }
+  } finally { S.auth.busy = false; render(); }
+}
+
+function vBmsLogin() {
+  const a = S.auth;
+  const disabled = a.busy ? 'disabled' : '';
+  const notConfigured = !AUTH_READY;
+  return `<div class="bms" style="display:flex;align-items:center;justify-content:center;padding:40px 20px;">
+    <div style="width:min(400px,100%);background:var(--bms-panel);border:1px solid var(--bms-rule);padding:32px 30px;display:flex;flex-direction:column;gap:22px;">
+      <div style="display:flex;flex-direction:column;gap:5px;">
+        <span style="font-size:16px;font-weight:600;letter-spacing:.01em;">Flaunt BMS</span>
+        <span style="font-size:12.5px;color:var(--bms-mute);">Administrative console. One authorised account.</span>
+      </div>
+      ${notConfigured ? `<div style="border:1px solid var(--bms-warn-line);background:var(--bms-warn-wash);padding:12px 14px;font-size:12.5px;color:var(--bms-warn);">Sign-in is not configured in this build. Deploy the BMS auth stack, then rebuild.</div>` : ''}
+      ${a.error ? `<div role="alert" style="border:1px solid var(--bms-bad-line);background:var(--bms-bad-wash);padding:11px 13px;font-size:12.5px;color:var(--bms-bad);">${esc(a.error)}</div>` : ''}
+      ${a.step === 'email' ? `
+        <div style="display:flex;flex-direction:column;gap:7px;">
+          <label class="lbl" for="auth-email">Email</label>
+          <input id="auth-email" type="email" value="${esc(a.email)}" ${disabled}
+            style="border:1px solid var(--bms-rule-2);padding:11px 12px;font-size:13.5px;width:100%;outline:none;font-family:var(--mono);">
+          <span style="font-size:11.5px;color:var(--bms-mute);">We email a six-digit code. There is no password.</span>
+        </div>
+        <button ${disabled} onclick="sendCode()" style="background:var(--bms-accent);color:#fff;border:none;padding:12px 18px;font-size:13.5px;font-weight:600;">
+          ${a.busy ? 'Sending…' : 'Email me a code'}</button>
+      ` : `
+        <div style="display:flex;flex-direction:column;gap:7px;">
+          <label class="lbl" for="auth-code">Six-digit code</label>
+          <input id="auth-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" ${disabled}
+            style="border:1px solid var(--bms-rule-2);padding:11px 12px;font-size:20px;letter-spacing:.34em;width:100%;outline:none;font-family:var(--mono);">
+          <span style="font-size:11.5px;color:var(--bms-mute);">Sent to ${esc(a.email)}. It expires in 5 minutes.</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button ${disabled} onclick="verifyCode()" style="background:var(--bms-accent);color:#fff;border:none;padding:12px 18px;font-size:13.5px;font-weight:600;flex-grow:1;">
+            ${a.busy ? 'Checking…' : 'Sign in'}</button>
+          <button ${disabled} onclick="S.auth.step='email';S.auth.error=null;render();"
+            style="background:none;border:none;font-size:12.5px;color:var(--bms-mute);">Start over</button>
+        </div>
+      `}
+    </div>
+  </div>`;
+}
+
+/* ---------- modal + router ---------- */
+function modalHtml() {
+  if (S.modal !== 'invite') return '';
+  const after = Math.max(0, S.balance - 1);
+  return `<div class="scrim" onclick="if(event.target===this)closeModal()">
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Send an invitation">
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <h2 class="serif" style="margin:0;font-size:26px;font-weight:400;letter-spacing:-.01em;">Send an invitation</h2>
+        <p style="margin:0;font-size:13.5px;color:var(--ink-soft);">They will get one email from you. Not a reminder sequence.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <label class="lbl" for="inv-email">Their email</label>
+        <input class="field mono" id="inv-email" style="font-size:13.5px;" value="nikhil.varma@zerodha.com">
+      </div>
+      <div style="border-top:1px solid var(--rule-2);border-bottom:1px solid var(--rule-2);padding:20px 0;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <span class="lbl">Your balance</span>
+          <span style="font-size:12.5px;color:var(--ink-soft);">Deducted the moment you send</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:13px;">
+          <span class="mono" style="font-size:25px;color:var(--ghost);text-decoration:line-through;">${S.balance}</span>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="var(--faint)" stroke-width="1.6"><path d="M4 12 H19 M14 7 L19 12 L14 17"/></svg>
+          <span class="mono" style="font-size:25px;font-weight:500;">${after}</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:12px;background:var(--sunk);padding:15px 16px;">
+        <span style="color:var(--good);display:flex;flex-shrink:0;">${RETURN}</span>
+        <span style="font-size:13px;color:var(--ink-2);line-height:1.6;">If they decline, or do not respond within 7 days, your token comes back automatically.</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:flex-end;gap:16px;">
+        <button onclick="closeModal()" style="background:none;border:none;font-size:13.5px;color:var(--ink-soft);padding:13px 4px;">Cancel</button>
+        <button class="btn" onclick="sendInvite()"><span style="display:flex;">${COIN}</span>Send invitation — 1 token</button>
+      </div>
+    </div></div>`;
+}
+
+function view() {
+  if (APP === 'bms' && !signedIn()) return vBmsLogin();
+  const h = location.hash || homeForApp();
+  if (h === '#/signup') return vSignup();
+  if (h === '#/welcome') return vWelcome();
+  if (h === '#/invitations') return vInvitations();
+  if (h === '#/gatekeeper') return vGatekeeper();
+  if (h === '#/tokens') return vTokens();
+  if (h === '#/bms/users') return vBmsUsers();
+  if (h === '#/bms/invitations') return vBmsInv();
+  if (h === '#/bms/webhooks') return vBmsHooks();
+  if (h.startsWith('#/p/')) return vProfile(h.slice(4));
+  return APP === 'bms' ? vBmsUsers() : vNetwork();
+}
+function screensForApp() {
+  if (APP === 'portal') return SCREENS.filter((s) => s.h.indexOf('#/bms/') !== 0);
+  if (APP === 'bms') return SCREENS.filter((s) => s.h.indexOf('#/bms/') === 0);
+  return SCREENS;
+}
+function homeForApp() { return APP === 'bms' ? '#/bms/users' : '#/network'; }
+
+function render() {
+  // portal must not serve the admin console, and bms must not serve the user
+  // app: they are different hostnames with different audiences.
+  let h = location.hash || homeForApp();
+  const isBms = h.indexOf('#/bms/') === 0;
+  if ((APP === 'portal' && isBms) || (APP === 'bms' && !isBms)) { h = homeForApp(); location.hash = h; }
+  const gated = APP === 'bms' && !signedIn();
+  document.getElementById('bar').style.display = gated ? 'none' : '';
+  document.getElementById('barnav').innerHTML = gated ? '' :
+    screensForApp().map((s) => `<button onclick="go('${s.h}')" ${h===s.h?'aria-current="true"':''}>${s.t}</button>`).join('')
+    + `<button onclick="reset();render();" title="Reset the walkthrough" style="margin-left:8px;color:#8C8377;">Reset</button>`;
+  document.getElementById('app').innerHTML = view();
+  document.getElementById('layer').innerHTML = modalHtml() + (S.toast ? `<div class="toast">${esc(S.toast)}</div>` : '');
+}
+addEventListener('hashchange', render);
+if (!location.hash) location.hash = homeForApp();
+render();
+</script>

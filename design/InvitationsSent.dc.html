@@ -1,0 +1,164 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #FBF9F5;
+      color: #1F1B16;
+      font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    a { color: #6E2B2B; text-decoration: none; }
+    a:hover { color: #4A1C1C; }
+    .serif { font-family: "Newsreader", Georgia, "Times New Roman", serif; font-weight: 400; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .lbl {
+      font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+      color: #A39A8C; font-weight: 500;
+    }
+    input, select, textarea, button { font: inherit; color: inherit; }
+    ::selection { background: #E8DCD2; }
+  </style>
+</helmet>
+<div style="min-height: 960px; display: flex; flex-direction: column; background: #FBF9F5;">
+  <header style="display: flex; align-items: center; justify-content: space-between; height: 68px; padding: 0 56px; border-bottom: 1px solid #E4DED2;">
+    <div style="display: flex; align-items: center; gap: 44px;">
+      <span class="serif" style="font-size: 23px; letter-spacing: 0.015em;">Flaunt</span>
+      <nav style="display: flex; gap: 26px; align-items: center;">
+        <span style="font-size: 13.5px; color: #6B6459;">Network</span>
+        <span style="font-size: 13.5px; font-weight: 500; padding-bottom: 3px; border-bottom: 1.5px solid #6E2B2B;">Invitations</span>
+      </nav>
+    </div>
+    <div style="display: flex; align-items: center; gap: 18px;">
+      <div style="display: flex; align-items: center; gap: 9px; border: 1px solid #D3CABA; padding: 6px 13px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6E2B2B" stroke-width="1.6">
+          <circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="3.2"></circle>
+        </svg>
+        <span class="mono" style="font-size: 13px; font-weight: 500;">10</span>
+        <span class="lbl">tokens</span>
+      </div>
+      <div class="serif" style="width: 34px; height: 34px; border-radius: 50%; background: #EDE3D6; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #4A4137;">AM</div>
+    </div>
+  </header>
+  <main style="flex-grow: 1; padding: 50px 56px 0;">
+    <div style="max-width: 830px; margin: 0 auto; display: flex; flex-direction: column; gap: 26px;">
+
+      <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+        <h1 class="serif" style="margin: 0; font-size: 32px; font-weight: 400; letter-spacing: -0.01em;">Invitations</h1>
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2E5E3E" stroke-width="1.6"><path d="M20 11.5 a8 8 0 1 1 -2.6 -5.9"></path><path d="M20 4 V10 H14"></path></svg>
+          <span style="font-size: 13px; color: #2E5E3E;">2 tokens returned to you, automatically</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 24px; border-bottom: 1px solid #D3CABA;">
+        <sc-for list="{{tabs}}" as="t" hint-placeholder-count="5">
+          <button onClick="{{t.pick}}" style="background: none; border: none; border-bottom: 1.5px solid {{t.bc}}; color: {{t.fg}}; font-weight: {{t.fw}}; font-size: 13px; padding: 0 0 10px; cursor: pointer; display: flex; align-items: center; gap: 7px;">
+            {{t.label}}
+            <span class="mono" style="font-size: 11px; color: #A39A8C;">{{t.count}}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="display: flex; flex-direction: column;">
+        <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
+          <div style="display: flex; align-items: center; gap: 18px; padding: 18px 0; border-bottom: 1px solid #E4DED2;">
+
+            <div style="display: flex; flex-direction: column; gap: 2px; width: 268px; flex-shrink: 0;">
+              <span class="serif" style="font-size: 17px;">{{r.name}}</span>
+              <span class="mono" style="font-size: 11.5px; color: #A39A8C;">{{r.email}}</span>
+            </div>
+
+            <div style="width: 132px; flex-shrink: 0;">
+              <span style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid {{r.bd}}; background: {{r.bg}}; padding: 3px 9px;">
+                <span style="width: 5px; height: 5px; border-radius: 50%; background: {{r.dot}};"></span>
+                <span class="lbl" style="color: {{r.dot}};">{{r.status}}</span>
+              </span>
+            </div>
+
+            <div style="display: flex; flex-direction: column; gap: 2px; flex-grow: 1;">
+              <span style="font-size: 12.5px; color: #37312A;">{{r.detail}}</span>
+              <span class="mono" style="font-size: 11.5px; color: #A39A8C;">sent {{r.sent}}</span>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 7px; width: 148px; flex-shrink: 0; justify-content: flex-end;">
+              <sc-if value="{{r.refunded}}" hint-placeholder-val="{{true}}">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2E5E3E" stroke-width="1.7"><path d="M20 11.5 a8 8 0 1 1 -2.6 -5.9"></path><path d="M20 4 V10 H14"></path></svg>
+              </sc-if>
+              <span style="font-size: 12.5px; color: {{r.tokFg}}; font-weight: {{r.tokFw}};">{{r.token}}</span>
+            </div>
+
+          </div>
+        </sc-for>
+      </div>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+<script data-dc-script>
+const SPENT   = { bd: '#CFC6B6', bg: '#F4F0E8', dot: '#6B6459' };
+const OPEN    = { bd: '#D8C9A8', bg: '#F7F1E3', dot: '#8A5A1E' };
+const BACK    = { bd: '#B9CBBE', bg: '#EFF4F0', dot: '#2E5E3E' };
+
+const ROWS = [
+  { key: 'accepted', name: 'Rahul Deshpande', email: 'rahul.deshpande@razorpay.com', status: 'Accepted',
+    detail: 'Connected 21 April 2026', sent: '18 Apr 2026', token: '1 token spent', refunded: false, tone: SPENT },
+  { key: 'pending',  name: 'Riyad Rasheed',   email: 'introduction via Priya Nair',  status: 'With Priya',
+    detail: 'Waiting on Priya Nair to approve', sent: '26 Aug 2026', token: '6 days left', refunded: false, tone: OPEN },
+  { key: 'pending',  name: 'Nikhil Varma',    email: 'nikhil.varma@zerodha.com',     status: 'Pending',
+    detail: 'Not opened yet', sent: '24 Aug 2026', token: '4 days left', refunded: false, tone: OPEN },
+  { key: 'accepted', name: 'Lucia Moretti',   email: 'lucia.moretti@bendingspoons.com', status: 'Accepted',
+    detail: 'Connected 04 August 2026', sent: '02 Aug 2026', token: '1 token spent', refunded: false, tone: SPENT },
+  { key: 'declined', name: 'James Whitfield', email: 'j.whitfield@kearney.com',      status: 'Declined',
+    detail: 'Declined 14 August 2026', sent: '12 Aug 2026', token: '1 token returned', refunded: true, tone: BACK },
+  { key: 'expired',  name: 'Anaya Sinha',     email: 'anaya.sinha@swiggy.in',        status: 'Expired',
+    detail: 'No response in 7 days', sent: '06 Aug 2026', token: '1 token returned', refunded: true, tone: BACK }
+];
+
+const TABS = [
+  { id: 'all',      label: 'All' },
+  { id: 'pending',  label: 'Open' },
+  { id: 'accepted', label: 'Accepted' },
+  { id: 'declined', label: 'Declined' },
+  { id: 'expired',  label: 'Expired' }
+];
+
+class Component extends DCLogic {
+  renderVals() {
+    const active = (this.state && this.state.filter) || 'all';
+    const rows = ROWS.filter((r) => active === 'all' || r.key === active);
+    return {
+      tabs: TABS.map((t) => ({
+        label: t.label,
+        count: t.id === 'all' ? ROWS.length : ROWS.filter((r) => r.key === t.id).length,
+        bc: t.id === active ? '#6E2B2B' : 'transparent',
+        fg: t.id === active ? '#1F1B16' : '#6B6459',
+        fw: t.id === active ? 500 : 400,
+        pick: () => this.setState({ filter: t.id })
+      })),
+      rows: rows.map((r) => ({
+        name: r.name, email: r.email, status: r.status, detail: r.detail, sent: r.sent,
+        token: r.token, refunded: r.refunded,
+        bd: r.tone.bd, bg: r.tone.bg, dot: r.tone.dot,
+        tokFg: r.refunded ? '#2E5E3E' : '#6B6459',
+        tokFw: r.refunded ? 500 : 400
+      }))
+    };
+  }
+}
+</script>
+</body>
+</html>

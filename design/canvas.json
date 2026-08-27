@@ -1,0 +1,165 @@
+{
+  "pages": [
+    {
+      "id": "page-1",
+      "name": "User app"
+    },
+    {
+      "id": "page-2",
+      "name": "BMS admin"
+    }
+  ],
+  "artboards": [
+    {
+      "file": "Signup.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 0,
+      "w": 1280,
+      "h": 960,
+      "title": "1 · Sign up",
+      "is_interactive": true
+    },
+    {
+      "file": "Welcome.dc.html",
+      "page": "page-1",
+      "x": 1360,
+      "y": 0,
+      "w": 1280,
+      "h": 960,
+      "title": "2 · Welcome — 10 tokens"
+    },
+    {
+      "file": "Main.dc.html",
+      "page": "page-1",
+      "x": 2720,
+      "y": 0,
+      "w": 1280,
+      "h": 960,
+      "title": "3 · My Network"
+    },
+    {
+      "file": "ProfileFirstDegree.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 1080,
+      "w": 1280,
+      "h": 960,
+      "title": "4 · 1st degree — full access"
+    },
+    {
+      "file": "ProfileSecondDegree.dc.html",
+      "page": "page-1",
+      "x": 1360,
+      "y": 1080,
+      "w": 1280,
+      "h": 960,
+      "title": "5 · 2nd degree — masked"
+    },
+    {
+      "file": "SendInvitation.dc.html",
+      "page": "page-1",
+      "x": 2720,
+      "y": 1080,
+      "w": 1280,
+      "h": 960,
+      "title": "6 · Send invitation"
+    },
+    {
+      "file": "InvitationsSent.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 2160,
+      "w": 1280,
+      "h": 960,
+      "title": "7 · Invitations & refunds",
+      "is_interactive": true
+    },
+    {
+      "file": "GatekeeperDecision.dc.html",
+      "page": "page-1",
+      "x": 1360,
+      "y": 2160,
+      "w": 1280,
+      "h": 960,
+      "title": "8 · Gatekeeper decision"
+    },
+    {
+      "file": "BuyTokens.dc.html",
+      "page": "page-1",
+      "x": 2720,
+      "y": 2160,
+      "w": 1280,
+      "h": 960,
+      "title": "9 · Buy tokens — IN vs intl"
+    },
+    {
+      "file": "MobileNetwork.dc.html",
+      "page": "page-1",
+      "x": 0,
+      "y": 3240,
+      "w": 390,
+      "h": 844,
+      "title": "10 · Mobile — network"
+    },
+    {
+      "file": "MobileProfile.dc.html",
+      "page": "page-1",
+      "x": 470,
+      "y": 3240,
+      "w": 390,
+      "h": 844,
+      "title": "11 · Mobile — masked profile"
+    },
+    {
+      "file": "BmsUserLedger.dc.html",
+      "page": "page-2",
+      "x": 0,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "12 · User ledger"
+    },
+    {
+      "file": "BmsInvitationConsole.dc.html",
+      "page": "page-2",
+      "x": 1520,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "13 · Invitation console",
+      "is_interactive": true
+    },
+    {
+      "file": "BmsWebhookMonitor.dc.html",
+      "page": "page-2",
+      "x": 3040,
+      "y": 0,
+      "w": 1440,
+      "h": 900,
+      "title": "14 · Razorpay webhooks"
+    }
+  ],
+  "annotations": [
+    {
+      "id": "note-1",
+      "page": "page-1",
+      "x": 0,
+      "y": -186,
+      "w": 760,
+      "text": "FLAUNT — user app (www.flaunt.network)\n\nOne story runs across screens 1–11: Arjun Mehta signs up, is granted 10 tokens, spends one inviting Nikhil Varma, and asks Priya Nair to introduce him to Riyad Rasheed.\n\nScreen 5 is the one that matters — 2nd-degree visibility with the email masked."
+    },
+    {
+      "id": "note-2",
+      "page": "page-2",
+      "x": 0,
+      "y": -186,
+      "w": 760,
+      "text": "BMS — internal admin (bms.flaunt.network)\n\nDeliberately a different visual language from the user app: cooler, denser, mono-heavy, sidebar-driven. It should never feel like the same product.\n\nRoot access is riyad@mobil80.com only; every other identity gets a 403."
+    }
+  ],
+  "launch": {
+    "view": "canvas",
+    "page": "page-1"
+  }
+}

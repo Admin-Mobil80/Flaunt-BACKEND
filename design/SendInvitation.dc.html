@@ -1,0 +1,126 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #FBF9F5;
+      color: #1F1B16;
+      font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    a { color: #6E2B2B; text-decoration: none; }
+    a:hover { color: #4A1C1C; }
+    .serif { font-family: "Newsreader", Georgia, "Times New Roman", serif; font-weight: 400; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .lbl {
+      font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+      color: #A39A8C; font-weight: 500;
+    }
+    input, select, textarea, button { font: inherit; color: inherit; }
+    ::selection { background: #E8DCD2; }
+  </style>
+</helmet>
+<div style="position: relative; height: 960px; overflow: hidden; background: #FBF9F5;">
+
+  <div style="filter: saturate(0.9);">
+  <header style="display: flex; align-items: center; justify-content: space-between; height: 68px; padding: 0 56px; border-bottom: 1px solid #E4DED2;">
+    <div style="display: flex; align-items: center; gap: 44px;">
+      <span class="serif" style="font-size: 23px; letter-spacing: 0.015em;">Flaunt</span>
+      <nav style="display: flex; gap: 26px; align-items: center;">
+        <span style="font-size: 13.5px; font-weight: 500; padding-bottom: 3px; border-bottom: 1.5px solid #6E2B2B;">Network</span>
+        <span style="font-size: 13.5px; color: #6B6459;">Invitations</span>
+      </nav>
+    </div>
+    <div style="display: flex; align-items: center; gap: 18px;">
+      <div style="display: flex; align-items: center; gap: 9px; border: 1px solid #D3CABA; padding: 6px 13px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6E2B2B" stroke-width="1.6">
+          <circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="3.2"></circle>
+        </svg>
+        <span class="mono" style="font-size: 13px; font-weight: 500;">10</span>
+        <span class="lbl">tokens</span>
+      </div>
+      <div class="serif" style="width: 34px; height: 34px; border-radius: 50%; background: #EDE3D6; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #4A4137;">AM</div>
+    </div>
+  </header>
+    <main style="padding: 54px 56px 0;">
+      <div style="max-width: 764px; margin: 0 auto; display: flex; flex-direction: column; gap: 30px;">
+        <h1 class="serif" style="margin: 0; font-size: 32px; font-weight: 400;">Your network</h1>
+        <div style="display: flex; flex-direction: column;">
+          <div style="padding-bottom: 11px; border-bottom: 1px solid #D3CABA;"><span class="lbl">Direct connections</span></div>
+          <div style="display: flex; align-items: center; gap: 16px; padding: 17px 0; border-bottom: 1px solid #E4DED2;">
+            <div class="serif" style="width: 38px; height: 38px; border-radius: 50%; background: #EFE7DC; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #4A4137;">PN</div>
+            <div style="display: flex; flex-direction: column;"><span class="serif" style="font-size: 17.5px;">Priya Nair</span><span style="font-size: 12.5px; color: #6B6459;">Design director &middot; Ather Energy</span></div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; padding: 17px 0; border-bottom: 1px solid #E4DED2;">
+            <div class="serif" style="width: 38px; height: 38px; border-radius: 50%; background: #EFE7DC; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #4A4137;">DO</div>
+            <div style="display: flex; flex-direction: column;"><span class="serif" style="font-size: 17.5px;">Daniel Osei</span><span style="font-size: 12.5px; color: #6B6459;">Infrastructure engineer &middot; Paystack</span></div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 16px; padding: 17px 0; border-bottom: 1px solid #E4DED2;">
+            <div class="serif" style="width: 38px; height: 38px; border-radius: 50%; background: #EFE7DC; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #4A4137;">MK</div>
+            <div style="display: flex; flex-direction: column;"><span class="serif" style="font-size: 17.5px;">Meera Krishnan</span><span style="font-size: 12.5px; color: #6B6459;">Clinical research lead &middot; Narayana Health</span></div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <div style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; background: rgba(31, 27, 22, 0.38);"></div>
+
+  <div style="position: absolute; top: 0; right: 0; bottom: 0; left: 0; display: flex; align-items: center; justify-content: center;">
+    <div style="width: 540px; background: #FBF9F5; border: 1px solid #C6BBA8; box-shadow: 0 24px 60px rgba(31, 27, 22, 0.22); padding: 34px 36px; display: flex; flex-direction: column; gap: 24px;">
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <h2 class="serif" style="margin: 0; font-size: 26px; font-weight: 400; letter-spacing: -0.01em;">Send an invitation</h2>
+        <p style="margin: 0; font-size: 13.5px; color: #6B6459;">They will get one email from you. Not a reminder sequence.</p>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 7px;">
+        <span class="lbl">Their email</span>
+        <div class="mono" style="border: 1px solid #D3CABA; background: #FFFFFF; padding: 12px 14px; font-size: 13.5px;">nikhil.varma@zerodha.com</div>
+      </div>
+
+      <div style="border-top: 1px solid #D3CABA; border-bottom: 1px solid #D3CABA; padding: 20px 0; display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; flex-direction: column; gap: 3px;">
+          <span class="lbl">Your balance</span>
+          <span style="font-size: 12.5px; color: #6B6459;">Deducted the moment you send</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 13px;">
+          <span class="mono" style="font-size: 25px; color: #C3B9A8; text-decoration: line-through;">10</span>
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="#A39A8C" stroke-width="1.6"><path d="M4 12 H19 M14 7 L19 12 L14 17"></path></svg>
+          <span class="mono" style="font-size: 25px; font-weight: 500; color: #1F1B16;">9</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 12px; background: #F3EEE4; padding: 15px 16px;">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#2E5E3E" stroke-width="1.6" style="flex-shrink: 0; margin-top: 1px;">
+          <path d="M20 11.5 a8 8 0 1 1 -2.6 -5.9"></path><path d="M20 4 V10 H14"></path>
+        </svg>
+        <span style="font-size: 13px; color: #37312A; line-height: 1.6;">If they decline, or do not respond within 7 days, your token comes back automatically.</span>
+      </div>
+
+      <div style="display: flex; align-items: center; justify-content: flex-end; gap: 16px;">
+        <button style="background: none; border: none; font-size: 13.5px; color: #6B6459; cursor: pointer; padding: 13px 4px;">Cancel</button>
+        <button style="display: flex; align-items: center; gap: 9px; background: #6E2B2B; color: #FBF9F5; border: none; padding: 13px 20px; font-size: 14px; font-weight: 500; cursor: pointer;">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#FBF9F5" stroke-width="1.6"><circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="3.2"></circle></svg>
+          Send invitation &mdash; 1 token
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

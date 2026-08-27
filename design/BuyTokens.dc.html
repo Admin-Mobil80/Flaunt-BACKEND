@@ -1,0 +1,139 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #FBF9F5;
+      color: #1F1B16;
+      font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    a { color: #6E2B2B; text-decoration: none; }
+    a:hover { color: #4A1C1C; }
+    .serif { font-family: "Newsreader", Georgia, "Times New Roman", serif; font-weight: 400; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .lbl {
+      font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+      color: #A39A8C; font-weight: 500;
+    }
+    input, select, textarea, button { font: inherit; color: inherit; }
+    ::selection { background: #E8DCD2; }
+  </style>
+</helmet>
+<div style="min-height: 960px; display: flex; flex-direction: column; background: #FBF9F5;">
+  <header style="display: flex; align-items: center; justify-content: space-between; height: 68px; padding: 0 56px; border-bottom: 1px solid #E4DED2;">
+    <div style="display: flex; align-items: center; gap: 44px;">
+      <span class="serif" style="font-size: 23px; letter-spacing: 0.015em;">Flaunt</span>
+      <nav style="display: flex; gap: 26px; align-items: center;">
+        <span style="font-size: 13.5px; font-weight: 500; padding-bottom: 3px; border-bottom: 1.5px solid #6E2B2B;">Network</span>
+        <span style="font-size: 13.5px; color: #6B6459;">Invitations</span>
+      </nav>
+    </div>
+    <div style="display: flex; align-items: center; gap: 18px;">
+      <div style="display: flex; align-items: center; gap: 9px; border: 1px solid #D3CABA; padding: 6px 13px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6E2B2B" stroke-width="1.6">
+          <circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="3.2"></circle>
+        </svg>
+        <span class="mono" style="font-size: 13px; font-weight: 500;">10</span>
+        <span class="lbl">tokens</span>
+      </div>
+      <div class="serif" style="width: 34px; height: 34px; border-radius: 50%; background: #EDE3D6; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #4A4137;">AM</div>
+    </div>
+  </header>
+  <main style="flex-grow: 1; padding: 50px 56px 0;">
+    <div style="max-width: 820px; margin: 0 auto; display: flex; flex-direction: column; gap: 30px;">
+
+      <div style="display: flex; flex-direction: column; gap: 9px;">
+        <h1 class="serif" style="margin: 0; font-size: 32px; font-weight: 400; letter-spacing: -0.01em;">Buy tokens</h1>
+        <p style="margin: 0; font-size: 14px; color: #6B6459; max-width: 58ch; text-wrap: pretty;">Twenty-five tokens per bundle. What you pay is set by the country on your account &mdash; yours is India.</p>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; align-items: start;">
+
+        <div style="border: 1.5px solid #6E2B2B; background: #FFFFFF; display: flex; flex-direction: column;">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 15px 24px; border-bottom: 1px solid #E4DED2; background: #F7F1EC;">
+            <span class="lbl" style="color: #6E2B2B;">Your price &middot; India</span>
+            <span class="mono" style="font-size: 11.5px; color: #6E2B2B;">INR</span>
+          </div>
+          <div style="padding: 26px 24px; display: flex; flex-direction: column; gap: 22px;">
+            <div style="display: flex; align-items: baseline; gap: 10px;">
+              <span class="serif" style="font-size: 38px; letter-spacing: -0.02em;">25</span>
+              <span style="font-size: 14px; color: #6B6459;">tokens</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 11px;">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 13.5px; color: #37312A;">25 tokens</span>
+                <span class="mono" style="font-size: 13.5px;">&#8377;400.00</span>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 13.5px; color: #37312A;">GST at 18%</span>
+                <span class="mono" style="font-size: 13.5px;">&#8377;72.00</span>
+              </div>
+              <div style="height: 1px; background: #D3CABA; margin: 3px 0;"></div>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 14px; font-weight: 500;">Total</span>
+                <span class="mono" style="font-size: 19px; font-weight: 500;">&#8377;472.00</span>
+              </div>
+            </div>
+            <button style="background: #6E2B2B; color: #FBF9F5; border: none; padding: 14px 22px; font-size: 14px; font-weight: 500; cursor: pointer; width: 100%;">Pay &#8377;472.00</button>
+            <span style="font-size: 11.5px; color: #A39A8C; text-align: center;">Razorpay &middot; GST invoice emailed on payment</span>
+          </div>
+        </div>
+
+        <div style="border: 1px solid #D3CABA; background: #FAF7F1; display: flex; flex-direction: column;">
+          <div style="display: flex; align-items: center; justify-content: space-between; padding: 15px 24px; border-bottom: 1px solid #E4DED2;">
+            <span class="lbl">Outside India</span>
+            <span class="mono" style="font-size: 11.5px; color: #A39A8C;">USD</span>
+          </div>
+          <div style="padding: 26px 24px; display: flex; flex-direction: column; gap: 22px;">
+            <div style="display: flex; align-items: baseline; gap: 10px;">
+              <span class="serif" style="font-size: 38px; letter-spacing: -0.02em; color: #6B6459;">25</span>
+              <span style="font-size: 14px; color: #A39A8C;">tokens</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 11px;">
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 13.5px; color: #6B6459;">25 tokens</span>
+                <span class="mono" style="font-size: 13.5px; color: #6B6459;">$5.00</span>
+              </div>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 13.5px; color: #A39A8C;">No regional tax</span>
+                <span class="mono" style="font-size: 13.5px; color: #A39A8C;">&mdash;</span>
+              </div>
+              <div style="height: 1px; background: #E4DED2; margin: 3px 0;"></div>
+              <div style="display: flex; align-items: center; justify-content: space-between;">
+                <span style="font-size: 14px; font-weight: 500; color: #6B6459;">Total</span>
+                <span class="mono" style="font-size: 19px; font-weight: 500; color: #6B6459;">$5.00</span>
+              </div>
+            </div>
+            <button style="background: none; border: 1px solid #D3CABA; color: #A39A8C; padding: 14px 22px; font-size: 14px; width: 100%;">Not your region</button>
+            <span style="font-size: 11.5px; color: #A39A8C; text-align: center;">Shown so you can see the difference</span>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="display: flex; gap: 11px; border-top: 1px solid #E4DED2; padding-top: 20px;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#A39A8C" stroke-width="1.6" style="flex-shrink: 0; margin-top: 1px;">
+          <circle cx="12" cy="12" r="9"></circle><path d="M12 11 V16.5"></path><path d="M12 7.6 V8.2"></path>
+        </svg>
+        <span style="font-size: 12.5px; color: #6B6459; line-height: 1.6; max-width: 76ch;">Your country was set when you signed up and is what decides the tax line. Tokens never expire, and they are not refundable once an invitation has been accepted.</span>
+      </div>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #FBF9F5;
+      color: #1F1B16;
+      font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    a { color: #6E2B2B; text-decoration: none; }
+    a:hover { color: #4A1C1C; }
+    .serif { font-family: "Newsreader", Georgia, "Times New Roman", serif; font-weight: 400; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .lbl {
+      font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+      color: #A39A8C; font-weight: 500;
+    }
+    input, select, textarea, button { font: inherit; color: inherit; }
+    ::selection { background: #E8DCD2; }
+  </style>
+</helmet>
+<div style="min-height: 960px; display: flex; flex-direction: column; background: #FBF9F5;">
+  <header style="display: flex; align-items: center; justify-content: space-between; height: 68px; padding: 0 56px; border-bottom: 1px solid #E4DED2;">
+    <div style="display: flex; align-items: center; gap: 44px;">
+      <span class="serif" style="font-size: 23px; letter-spacing: 0.015em;">Flaunt</span>
+      <nav style="display: flex; gap: 26px; align-items: center;">
+        <span style="font-size: 13.5px; font-weight: 500; padding-bottom: 3px; border-bottom: 1.5px solid #6E2B2B;">Network</span>
+        <span style="font-size: 13.5px; color: #6B6459;">Invitations</span>
+      </nav>
+    </div>
+    <div style="display: flex; align-items: center; gap: 18px;">
+      <div style="display: flex; align-items: center; gap: 9px; border: 1px solid #D3CABA; padding: 6px 13px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6E2B2B" stroke-width="1.6">
+          <circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="3.2"></circle>
+        </svg>
+        <span class="mono" style="font-size: 13px; font-weight: 500;">10</span>
+        <span class="lbl">tokens</span>
+      </div>
+      <div class="serif" style="width: 34px; height: 34px; border-radius: 50%; background: #EDE3D6; display: flex; align-items: center; justify-content: center; font-size: 14px; color: #4A4137;">AM</div>
+    </div>
+  </header>
+  <main style="flex-grow: 1; padding: 40px 56px 0;">
+    <div style="max-width: 700px; margin: 0 auto; display: flex; flex-direction: column; gap: 34px;">
+
+      <a href="#" style="display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: #6B6459;">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6459" stroke-width="1.8"><path d="M14 6 L8 12 L14 18"></path></svg>
+        Network
+      </a>
+
+      <div style="display: flex; align-items: flex-start; gap: 22px;">
+        <div class="serif" style="width: 84px; height: 84px; border-radius: 50%; background: #EFE7DC; display: flex; align-items: center; justify-content: center; font-size: 29px; color: #4A4137; flex-shrink: 0;">PN</div>
+        <div style="display: flex; flex-direction: column; gap: 5px; padding-top: 6px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <h1 class="serif" style="margin: 0; font-size: 34px; font-weight: 400; letter-spacing: -0.015em;">Priya Nair</h1>
+            <span style="display: flex; align-items: center; gap: 6px; border: 1px solid #B9CBBE; background: #EFF4F0; padding: 3px 9px;">
+              <span style="width: 5px; height: 5px; border-radius: 50%; background: #2E5E3E;"></span>
+              <span class="lbl" style="color: #2E5E3E;">1st degree</span>
+            </span>
+          </div>
+          <span style="font-size: 14.5px; color: #4A4137;">Design director &middot; Ather Energy</span>
+          <span style="font-size: 13px; color: #6B6459;">Bengaluru, India</span>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <span class="lbl">Professional description</span>
+        <p style="margin: 0; font-size: 15px; line-height: 1.72; color: #37312A; max-width: 60ch; text-wrap: pretty;">I run design at Ather Energy, where my team owns everything a rider touches &mdash; the dash, the app, the wayfinding across the charging network. Fifteen years in, I have stopped believing that good design announces itself. Before Ather: Titan, and four years freelancing for manufacturers who had never hired a designer before and were not sure they needed one.</p>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 14px; border-top: 1px solid #D3CABA; padding-top: 24px;">
+        <span class="lbl">Contact</span>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px;">
+          <div style="display: flex; flex-direction: column; gap: 5px;">
+            <span style="font-size: 11.5px; color: #A39A8C;">Primary email</span>
+            <span class="mono" style="font-size: 13.5px; color: #1F1B16;">priya.nair@atherenergy.com</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 5px;">
+            <span style="font-size: 11.5px; color: #A39A8C;">Secondary email</span>
+            <span class="mono" style="font-size: 13.5px; color: #1F1B16;">priya@nairstudio.in</span>
+          </div>
+        </div>
+      </div>
+
+      <div style="display: flex; align-items: center; gap: 9px; border-top: 1px solid #E4DED2; padding-top: 20px;">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2E5E3E" stroke-width="1.7"><path d="M5 12.5 L10 17.5 L19 7"></path></svg>
+        <span style="font-size: 13px; color: #6B6459;">Connected since 14 June 2026. Full contact details are visible to you both.</span>
+      </div>
+
+    </div>
+  </main>
+</div>
+</x-dc>
+</body>
+</html>

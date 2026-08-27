@@ -1,0 +1,74 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: #FBF9F5;
+      color: #1F1B16;
+      font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+      font-size: 14px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+    }
+    a { color: #6E2B2B; text-decoration: none; }
+    a:hover { color: #4A1C1C; }
+    .serif { font-family: "Newsreader", Georgia, "Times New Roman", serif; font-weight: 400; }
+    .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .lbl {
+      font-size: 10px; letter-spacing: 0.15em; text-transform: uppercase;
+      color: #A39A8C; font-weight: 500;
+    }
+    input, select, textarea, button { font: inherit; color: inherit; }
+    ::selection { background: #E8DCD2; }
+  </style>
+</helmet>
+<div style="min-height: 960px; display: flex; flex-direction: column; align-items: center; justify-content: center; background: #FBF9F5; padding: 56px;">
+  <div style="width: 100%; max-width: 540px; display: flex; flex-direction: column; align-items: center; gap: 38px; text-align: center;">
+
+    <span class="serif" style="font-size: 24px; letter-spacing: 0.015em;">Flaunt</span>
+
+    <div style="display: flex; flex-direction: column; gap: 12px; align-items: center;">
+      <h1 class="serif" style="margin: 0; font-size: 40px; font-weight: 400; letter-spacing: -0.02em;">Welcome, Arjun.</h1>
+      <p style="margin: 0; font-size: 15px; color: #6B6459; max-width: 42ch; line-height: 1.65; text-wrap: pretty;">Your account is verified. We have put ten tokens in it to get you started.</p>
+    </div>
+
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 16px; border-top: 1px solid #D3CABA; border-bottom: 1px solid #D3CABA; padding: 30px 0; width: 100%;">
+      <div style="display: flex; gap: 10px;">
+        <sc-for list="{{tokens}}" as="t" hint-placeholder-count="10">
+          <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="#6E2B2B" stroke-width="1.5">
+            <circle cx="12" cy="12" r="8.5"></circle><circle cx="12" cy="12" r="3.2"></circle>
+          </svg>
+        </sc-for>
+      </div>
+      <span class="lbl" style="color: #6E2B2B;">10 tokens</span>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 10px; align-items: center;">
+      <p class="serif" style="margin: 0; font-size: 20px; line-height: 1.5; color: #1F1B16;">Every invitation you send costs one token.</p>
+      <p style="margin: 0; font-size: 13.5px; color: #6B6459; max-width: 46ch; line-height: 1.6; text-wrap: pretty;">If it is declined, or goes unanswered for seven days, the token comes back to you. You only pay for the connections you actually make.</p>
+    </div>
+
+    <button style="background: #6E2B2B; color: #FBF9F5; border: none; padding: 14px 28px; font-size: 14px; font-weight: 500; cursor: pointer;">Go to your network</button>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script>
+class Component extends DCLogic {
+  renderVals() {
+    return { tokens: [1,2,3,4,5,6,7,8,9,10] };
+  }
+}
+</script>
+</body>
+</html>

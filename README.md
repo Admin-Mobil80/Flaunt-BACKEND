@@ -64,7 +64,8 @@ against the target AWS account/profile.
 ```
 bin/infra.ts            CDK app — instantiates every stack per environment
 lib/                    one file per stack, plus env-config.ts
-functions/shared/       code shared by Lambdas (key builders, validation)
+functions/shared/       code shared by Lambdas (key builders, validation, OTP)
+design/                 source both frontends are generated from (see design/README.md)
 graphql/schema.graphql  AppSync schema
 docs/DATA-MODEL.md      single-table design reference
 test/                   jest
