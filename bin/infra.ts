@@ -3,6 +3,7 @@ import * as cdk from 'aws-cdk-lib';
 import { DataStack } from '../lib/data-stack';
 import { CertStack } from '../lib/cert-stack';
 import { FrontendStack } from '../lib/frontend-stack';
+import { AuthStack } from '../lib/auth-stack';
 import { BmsAuthStack } from '../lib/bms-auth-stack';
 import { CiDeployStack } from '../lib/ci-deploy-stack';
 import { EnvName } from '../lib/env-config';
@@ -70,6 +71,14 @@ const portalStack = new FrontendStack(app, 'FlauntFrontendStackPortalProd', {
 });
 stacks.push(portalStack);
 
+const authStack = new AuthStack(app, 'FlauntAuthStackProd', {
+  env,
+  envName,
+  table: dataStack.table,
+  otpFromEmail: OTP_FROM_EMAIL,
+});
+stacks.push(authStack);
+
 const bmsAuthStack = new BmsAuthStack(app, 'FlauntBmsAuthStackProd', {
   env,
   envName,
@@ -100,9 +109,6 @@ stacks.push(new CiDeployStack(app, 'FlauntCiDeployStack', {
 stacks.forEach((stack) => cdk.Tags.of(stack).add('Environment', envName));
 
 // Still to land, each taking dataStack.table:
-//   AuthStack           The member-facing pool: Cognito, custom:country, and the
-//                       PostConfirmation trigger that writes the profile and
-//                       grants 10 tokens (§3.1). BMS sign-in already exists.
 //   AppSyncStack        GraphQL API + the resolver that masks 2nd-degree
 //                       email addresses before they leave the API (§3.2).
 //   InvitesStack        Invite/introduction mutations, the DynamoDB stream

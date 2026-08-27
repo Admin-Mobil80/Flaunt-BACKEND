@@ -26,21 +26,29 @@ const PROFILE = process.env.AWS_PROFILE ?? 'cloudmeter';
  * placeholder so the site still builds before the auth stack exists — the login
  * screen detects the placeholder and says so instead of failing obscurely.
  */
-function bmsClientId() {
+/**
+ * Each app signs in against its own Cognito pool — members and staff are
+ * deliberately separate populations — so each bundle carries its own client id,
+ * read from that stack's outputs rather than hardcoded.
+ */
+function clientId(stack, outputKey) {
   try {
     const out = execFileSync('aws', [
       'cloudformation', 'describe-stacks',
-      '--stack-name', 'FlauntBmsAuthStackProd',
+      '--stack-name', stack,
       '--region', REGION, '--profile', PROFILE,
-      '--query', "Stacks[0].Outputs[?OutputKey=='BmsUserPoolClientId'].OutputValue",
+      '--query', `Stacks[0].Outputs[?OutputKey=='${outputKey}'].OutputValue`,
       '--output', 'text',
     ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
     if (out && out !== 'None') return out;
   } catch { /* stack not deployed yet, or no credentials */ }
-  console.warn('  ! BMS auth stack not readable — building with a placeholder client id.');
-  return '__BMS_CLIENT_ID__';
+  console.warn(`  ! ${stack} not readable — building with a placeholder client id.`);
+  return '__CLIENT_ID__';
 }
-const CLIENT_ID = bmsClientId();
+const CLIENT_IDS = {
+  portal: clientId('FlauntAuthStackProd', 'UserPoolClientId'),
+  bms: clientId('FlauntBmsAuthStackProd', 'BmsUserPoolClientId'),
+};
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const SRC = join(HERE, 'flaunt-walkthrough.html');
@@ -65,7 +73,7 @@ for (const app of ['portal', 'bms']) {
   out = out.replace("var APP = 'both';", `var APP = '${app}';`);
   if (out === before) throw new Error('APP selector not found in source');
 
-  out = out.replace('__AWS_REGION__', REGION).replace('__BMS_CLIENT_ID__', CLIENT_ID);
+  out = out.replace('__AWS_REGION__', REGION).replace('__CLIENT_ID__', CLIENT_IDS[app]);
 
   // Search engines must not index a service that cannot yet accept anyone.
   // The CloudFront response-headers policy sets X-Robots-Tag too; this is the

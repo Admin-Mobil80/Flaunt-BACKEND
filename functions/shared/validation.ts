@@ -7,12 +7,29 @@
 export const BIO_MAX_WORDS = 300;
 
 /**
- * A byte ceiling as well as a word ceiling. 300 "words" of 400 characters each
- * is a 120KB profile item — under DynamoDB's 400KB item limit, so the write
- * would succeed, but it is not a professional bio. 6000 bytes comfortably fits
- * 300 words of ordinary prose.
+ * A byte ceiling as well as a word ceiling. Two things set it.
+ *
+ * Shape: 300 "words" of 400 characters each is a 120KB profile item — under
+ * DynamoDB's 400KB limit, so the write would succeed, but it is not a
+ * professional bio.
+ *
+ * The actual number is Cognito's. The bio reaches the backend as a custom
+ * attribute at sign-up, and 2048 characters is the hard ceiling for one.
+ *
+ * **[!] 2048 bytes does not reliably hold 300 words**, and it is worth being
+ * precise about that rather than assuming it does. Including the separating
+ * space, 300 words fit only if they average under ~5.8 characters. Everyday
+ * prose (~4.7) fits with room; a bio written in the vocabulary this product
+ * attracts — "infrastructure", "reconciliation", "responsibilities" — can run
+ * 6–7 and be rejected while comfortably under 300 words. The practical ceiling
+ * today is nearer 250–290 words depending on vocabulary, which is short of what
+ * §3.1 promises.
+ *
+ * This is a constraint of routing the bio through a sign-up attribute, not a
+ * product decision. It lifts when profile writes go through the API and the bio
+ * goes straight to DynamoDB, where the only real limit is the 400KB item.
  */
-export const BIO_MAX_BYTES = 6000;
+export const BIO_MAX_BYTES = 2048;
 
 export const NAME_MAX_CHARS = 120;
 

@@ -80,9 +80,25 @@ describe('bio validation (§3.1: 300 words, enforced backend-side)', () => {
     expect(() => validateBio(undefined)).toThrow(/required/);
   });
 
-  // 300 "words" can still be a 120KB item without a byte ceiling.
+  // 300 "words" can still be a huge item without a byte ceiling.
   test('rejects few-but-enormous words', () => {
-    expect(() => validateBio('x'.repeat(7000))).toThrow(/bytes/);
+    expect(() => validateBio('x'.repeat(3000))).toThrow(/bytes/);
+  });
+
+  // The cap is Cognito's 2048-char custom-attribute ceiling. These two tests
+  // pin where it actually bites, because it does NOT reliably hold 300 words.
+  test('300 everyday-length words fit inside the byte cap', () => {
+    const prose = Array.from({ length: 300 }, () => 'teams').join(' '); // 5+1 chars
+    expect(countWords(prose)).toBe(300);
+    expect(validateBio(prose)).toBeTruthy();
+  });
+
+  // A bio well under 300 words is still rejected once the vocabulary is long —
+  // the gap between what §3.1 promises and what a sign-up attribute can carry.
+  test('300 long words are rejected on bytes despite being within the word limit', () => {
+    const dense = Array.from({ length: 300 }, () => 'infrastructure').join(' ');
+    expect(countWords(dense)).toBe(300);
+    expect(() => validateBio(dense)).toThrow(/bytes/);
   });
 });
 

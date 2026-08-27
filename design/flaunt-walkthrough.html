@@ -1,3 +1,4 @@
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Flaunt Walkthrough</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -260,14 +261,15 @@ What I am glad to talk about: payments infrastructure in markets where the regul
 I am in Bengaluru, and happy to be useful to people building in this space, particularly early founders working out whether what they have is a product problem or a distribution one. That distinction took me years to learn and ten minutes to explain.`;
 
 var APP = 'both';   // build-time selector: 'portal' | 'bms' | 'both'
-var AUTH = { region: '__AWS_REGION__', clientId: '__BMS_CLIENT_ID__' };
+var AUTH = { region: '__AWS_REGION__', clientId: '__CLIENT_ID__' };
 var AUTH_READY = AUTH.clientId.indexOf('__') !== 0;
+var SESSION_KEY = 'flaunt.' + APP;
 var S = {};   // var, not let: inline on* handlers resolve through window
 function reset() {
   S = { balance:10, bio:SEED_BIO, invFilter:'all', bmsFilter:'ALL', modal:null, toast:null,
         invites:SEED_INV.map((r)=>({...r})), bmsTok:Object.fromEntries(BMS_USERS.map((u)=>[u.email,u.tok])),
         connected:{}, introAsked:false,
-        auth:{ step:'email', email:'riyad@mobil80.com', busy:false, error:null, session:null } };
+        auth:{ step: APP === 'portal' ? 'choose' : 'email', email: APP === 'bms' ? 'riyad@mobil80.com' : '', busy:false, error:null, session:null } };
 }
 reset();
 
@@ -309,6 +311,8 @@ function topbar(active) {
         <span class="lbl">tokens</span>
       </button>
       <span class="avatar" style="width:34px;height:34px;font-size:14px;">AM</span>
+      ${APP === 'portal' ? `<button onclick="signOut()" title="${esc((session() && session().email) || '')}"
+        style="background:none;border:1px solid var(--rule-2);color:var(--ink-soft);font-size:11.5px;padding:4px 10px;">Sign out</button>` : ''}
     </div>
   </header>`;
 }
@@ -872,15 +876,15 @@ async function idp(target, body) {
   return data;
 }
 function session() {
-  try { return JSON.parse(sessionStorage.getItem('flaunt.bms') || 'null'); } catch (e) { return null; }
+  try { return JSON.parse(sessionStorage.getItem(SESSION_KEY) || 'null'); } catch (e) { return null; }
 }
 function signedIn() {
   const s = session();
   return !!(s && s.idToken && s.expiresAt > Date.now());
 }
 function signOut() {
-  try { sessionStorage.removeItem('flaunt.bms'); } catch (e) {}
-  S.auth = { step: 'email', email: 'riyad@mobil80.com', busy: false, error: null, session: null };
+  try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+  S.auth = { step: APP === 'portal' ? 'choose' : 'email', email: APP === 'bms' ? 'riyad@mobil80.com' : '', busy: false, error: null, session: null };
   render();
 }
 async function sendCode() {
@@ -914,7 +918,7 @@ async function verifyCode() {
     });
     if (r.AuthenticationResult && r.AuthenticationResult.IdToken) {
       const a = r.AuthenticationResult;
-      sessionStorage.setItem('flaunt.bms', JSON.stringify({
+      sessionStorage.setItem(SESSION_KEY, JSON.stringify({
         idToken: a.IdToken, email: S.auth.email,
         expiresAt: Date.now() + (a.ExpiresIn || 3600) * 1000
       }));
@@ -929,6 +933,60 @@ async function verifyCode() {
       ? 'That code has expired or been used. Request a new one.'
       : (e.message || 'Could not verify the code.');
     if (e.type === 'NotAuthorizedException') { S.auth.step = 'email'; S.auth.session = null; }
+  } finally { S.auth.busy = false; render(); }
+}
+
+
+/**
+ * A password is required by the SignUp API but never used: the pool's client
+ * enables only CUSTOM_AUTH, so there is no flow that could present it. It is
+ * generated, sent once, and forgotten.
+ */
+function throwawayPassword() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes)).replace(/[^A-Za-z0-9]/g, '') + 'aA1!';
+}
+async function signUp() {
+  const val = (id) => { const e = document.getElementById(id); return e ? e.value.trim() : ''; };
+  const email = val('su-email').toLowerCase();
+  const name = val('su-name');
+  const designation = val('su-designation');
+  const country = val('su-country');
+  if (!email || !name || !designation) {
+    S.auth.error = 'Email, full name and designation are required.'; render(); return;
+  }
+  S.auth.busy = true; S.auth.error = null; S.auth.email = email; render();
+  const attrs = [
+    { Name: 'email', Value: email },
+    { Name: 'name', Value: name },
+    { Name: 'custom:country', Value: country || 'IN' },
+    { Name: 'custom:designation', Value: designation }
+  ];
+  const org = val('su-org'), loc = val('su-location'), bio = val('su-bio');
+  if (org) attrs.push({ Name: 'custom:organisation', Value: org });
+  if (loc) attrs.push({ Name: 'custom:location', Value: loc });
+  if (bio) attrs.push({ Name: 'custom:bio', Value: bio });
+  try {
+    await idp('SignUp', {
+      ClientId: AUTH.clientId, Username: email,
+      Password: throwawayPassword(), UserAttributes: attrs
+    });
+  } catch (e) {
+    if (e.type !== 'UsernameExistsException') {
+      S.auth.busy = false;
+      S.auth.error = e.message || 'Could not create the account.';
+      render(); return;
+    }
+    // Already registered — fall through to sign-in rather than dead-ending.
+  }
+  try {
+    const r = await idp('InitiateAuth', {
+      AuthFlow: 'CUSTOM_AUTH', ClientId: AUTH.clientId, AuthParameters: { USERNAME: email }
+    });
+    S.auth.session = r.Session; S.auth.step = 'code';
+  } catch (e) {
+    S.auth.error = e.message || 'Account created, but the code could not be sent.';
   } finally { S.auth.busy = false; render(); }
 }
 
@@ -971,6 +1029,113 @@ function vBmsLogin() {
   </div>`;
 }
 
+
+function vPortalAuth() {
+  const a = S.auth;
+  const d = a.busy ? 'disabled' : '';
+  const shell = (inner) => `<div class="wrap" style="min-height:100vh;display:flex;align-items:center;justify-content:center;">
+    <div style="width:min(520px,100%);display:flex;flex-direction:column;gap:26px;">
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <span class="serif" style="font-size:24px;letter-spacing:.015em;">Flaunt</span>
+      </div>
+      ${!AUTH_READY ? `<div style="border:1px solid var(--warn-line);background:var(--warn-wash);padding:12px 14px;font-size:12.5px;color:var(--warn);">Sign-in is not configured in this build.</div>` : ''}
+      ${a.error ? `<div role="alert" style="border:1px solid #E0C3C3;background:#FBF0F0;padding:11px 13px;font-size:12.5px;color:var(--bad);">${esc(a.error)}</div>` : ''}
+      ${inner}
+    </div></div>`;
+
+  if (a.step === 'code') {
+    return shell(`
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <h1 class="big">Check your email</h1>
+        <p style="margin:0;font-size:14px;color:var(--ink-soft);">We sent a six-digit code to ${esc(a.email)}. It expires in five minutes.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <label class="lbl" for="auth-code">Code</label>
+        <input class="field mono" id="auth-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" ${d}
+          style="font-size:22px;letter-spacing:.36em;">
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <button class="btn" ${d} onclick="verifyCode()">${a.busy ? 'Checking…' : 'Continue'}</button>
+        <button ${d} onclick="S.auth.step=(APP==='portal'?'choose':'email');S.auth.error=null;render();"
+          style="background:none;border:none;font-size:13px;color:var(--ink-soft);">Start over</button>
+      </div>`);
+  }
+
+  if (a.step === 'signin') {
+    return shell(`
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <h1 class="big">Sign in</h1>
+        <p style="margin:0;font-size:14px;color:var(--ink-soft);">No password. We email you a code.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <label class="lbl" for="auth-email">Email</label>
+        <input class="field mono" id="auth-email" type="email" value="${esc(a.email)}" ${d} style="font-size:13.5px;">
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <button class="btn" ${d} onclick="sendCode()">${a.busy ? 'Sending…' : 'Email me a code'}</button>
+        <button ${d} onclick="S.auth.step='signup';S.auth.error=null;render();"
+          style="background:none;border:none;font-size:13px;color:var(--accent);">Create an account</button>
+      </div>`);
+  }
+
+  if (a.step === 'signup') {
+    return shell(`
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <h1 class="big">Create your account</h1>
+        <p style="margin:0;font-size:14px;color:var(--ink-soft);">Eight fields, once. Flaunt keeps nothing else about you.</p>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <label class="lbl" for="su-email">Email</label>
+        <input class="field mono" id="su-email" type="email" ${d} style="font-size:13.5px;">
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <label class="lbl" for="su-name">Full name</label>
+        <input class="field" id="su-name" ${d}>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div style="display:flex;justify-content:space-between;"><label class="lbl" for="su-designation">Designation</label><span class="lbl" style="color:var(--warn);">Required</span></div>
+        <input class="field" id="su-designation" maxlength="100" ${d}>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div style="display:flex;justify-content:space-between;"><label class="lbl" for="su-org">Organisation</label><span class="lbl">Optional</span></div>
+        <input class="field" id="su-org" maxlength="100" ${d}>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <div style="display:flex;justify-content:space-between;"><label class="lbl" for="su-location">Location</label><span class="lbl">Optional</span></div>
+        <input class="field" id="su-location" maxlength="80" ${d}>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <label class="lbl" for="su-country">Country</label>
+        <select class="field" id="su-country" ${d}>
+          <option value="IN">India</option><option value="SG">Singapore</option>
+          <option value="PT">Portugal</option><option value="GH">Ghana</option>
+          <option value="AE">United Arab Emirates</option><option value="GB">United Kingdom</option>
+          <option value="US">United States</option>
+        </select>
+        <span style="font-size:12px;color:var(--faint);">Sets how you are billed for tokens.</span>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <label class="lbl" for="su-bio">Professional description</label>
+        <textarea class="field" id="su-bio" maxlength="2048" ${d} style="height:120px;resize:vertical;font-size:13.5px;line-height:1.6;"></textarea>
+      </div>
+      <div style="display:flex;align-items:center;gap:16px;">
+        <button class="btn" ${d} onclick="signUp()">${a.busy ? 'Creating…' : 'Create account'}</button>
+        <button ${d} onclick="S.auth.step='signin';S.auth.error=null;render();"
+          style="background:none;border:none;font-size:13px;color:var(--ink-soft);">I already have an account</button>
+      </div>`);
+  }
+
+  return shell(`
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <h1 class="serif" style="margin:0;font-size:clamp(28px,5vw,36px);font-weight:400;letter-spacing:-.02em;">A smaller network.</h1>
+      <p style="margin:0;font-size:15px;color:var(--ink-soft);line-height:1.65;max-width:44ch;text-wrap:pretty;">Invitation-only, no feed, and every introduction costs a token. Sign in with your email — there is no password to remember.</p>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <button class="btn" onclick="S.auth.step='signup';render();">Create an account</button>
+      <button class="btn ghost" onclick="S.auth.step='signin';render();">Sign in</button>
+    </div>`);
+}
+
 /* ---------- modal + router ---------- */
 function modalHtml() {
   if (S.modal !== 'invite') return '';
@@ -1009,6 +1174,7 @@ function modalHtml() {
 
 function view() {
   if (APP === 'bms' && !signedIn()) return vBmsLogin();
+  if (APP === 'portal' && !signedIn()) return vPortalAuth();
   const h = location.hash || homeForApp();
   if (h === '#/signup') return vSignup();
   if (h === '#/welcome') return vWelcome();
@@ -1034,7 +1200,7 @@ function render() {
   let h = location.hash || homeForApp();
   const isBms = h.indexOf('#/bms/') === 0;
   if ((APP === 'portal' && isBms) || (APP === 'bms' && !isBms)) { h = homeForApp(); location.hash = h; }
-  const gated = APP === 'bms' && !signedIn();
+  const gated = APP !== 'both' && !signedIn();
   document.getElementById('bar').style.display = gated ? 'none' : '';
   document.getElementById('barnav').innerHTML = gated ? '' :
     screensForApp().map((s) => `<button onclick="go('${s.h}')" ${h===s.h?'aria-current="true"':''}>${s.t}</button>`).join('')
