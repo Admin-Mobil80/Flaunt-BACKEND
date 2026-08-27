@@ -17,7 +17,29 @@ const OTP_TTL_SECONDS = 5 * 60;
  * abandoned codes without a scheduled job.
  */
 export const handler: CreateAuthChallengeTriggerHandler = async (event) => {
-  const email = event.request.userAttributes.email;
+  const email = event.request.userAttributes?.email;
+
+  /**
+   * The account does not exist.
+   *
+   * preventUserExistenceErrors is enabled, so Cognito deliberately runs this
+   * trigger anyway, with no email attribute, to make an unknown address behave
+   * exactly like a known one. Reading `email` unguarded threw here, and the
+   * resulting 500 was itself the disclosure the setting exists to prevent —
+   * a crash for unknown addresses and a normal response for real ones is a
+   * perfect account-enumeration oracle for a network whose whole premise is
+   * that membership is private.
+   *
+   * So: issue a challenge that cannot be answered, send nothing, and let the
+   * flow fail at verification like any wrong code.
+   */
+  if (!email) {
+    event.response.publicChallengeParameters = { email: '' };
+    event.response.privateChallengeParameters = {};
+    event.response.challengeMetadata = 'OTP_EMAIL_NO_USER';
+    return event;
+  }
+
   const code = generateOtp();
   const now = Math.floor(Date.now() / 1000);
 

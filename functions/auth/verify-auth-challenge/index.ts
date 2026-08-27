@@ -6,7 +6,13 @@ import { hashOtp, otpMatches } from '../../shared/otp';
 const MAX_ATTEMPTS = 5;
 
 export const handler: VerifyAuthChallengeResponseTriggerHandler = async (event) => {
-  const email = event.request.userAttributes.email;
+  const email = event.request.userAttributes?.email;
+  // No account: nothing was ever stored to compare against, and looking up
+  // `OTP#undefined` would be a pointless read. Fail like any wrong code.
+  if (!email) {
+    event.response.answerCorrect = false;
+    return event;
+  }
   const submitted = (event.request.challengeAnswer ?? '').trim();
   const key = { PK: `OTP#${email.toLowerCase()}`, SK: 'METADATA' };
 
