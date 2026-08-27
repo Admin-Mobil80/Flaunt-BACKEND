@@ -61,19 +61,46 @@ export async function send(mail: Mail): Promise<boolean> {
   }
 }
 
-export function invitationEmail(opts: { to: string; senderName: string; senderLine: string; inviteId: string }): Mail {
-  const { to, senderName, senderLine, inviteId } = opts;
+export function invitationEmail(opts: {
+  to: string; senderName: string; senderLine: string; inviteId: string; hasAccount: boolean;
+}): Mail {
+  const { to, senderName, senderLine, inviteId, hasAccount } = opts;
   /**
    * The link carries the invited address so sign-up can prefill it. Without
    * that the recipient retypes an address they never chose, and a single
    * mistyped character silently creates an unrelated account whose OTP goes to
-   * a mailbox nobody is watching — which is exactly what happened in testing.
+   * a mailbox nobody is watching — which is what happened in testing.
    *
    * It does put the address into CloudFront access logs. The alternative is to
    * carry only inviteId and resolve the address through an unauthenticated
    * lookup, which needs a public API surface that does not exist yet.
    */
   const link = `${PORTAL_URL}/?invite=${encodeURIComponent(inviteId)}&email=${encodeURIComponent(to)}`;
+
+  /**
+   * Two quite different messages, because the recipients are in different
+   * situations. Someone who already has an account is being asked to connect
+   * and needs no explanation of what Flaunt is; telling them to "join" would
+   * read as though their account did not exist. Someone new is being asked to
+   * join, and needs the premise before the request makes any sense.
+   */
+  if (hasAccount) {
+    return {
+      to,
+      subject: `${senderName} wants to connect on Flaunt`,
+      html: layout(
+        `${escapeHtml(senderName)} wants to connect.`,
+        `<p style="margin:0 0 12px;">${escapeHtml(senderLine)}</p>
+         <p style="margin:0 0 12px;">Sign in to accept, and you will both see each other's full contact details. Declining returns their token &mdash; they will be told you passed, not why.</p>
+         <p style="margin:0;">The request is open for seven days.</p>`,
+        { label: 'Sign in and respond', url: link }
+      ),
+      text: `${senderName} wants to connect with you on Flaunt.\n\n${senderLine}\n\n`
+        + `Sign in to accept, and you will both see each other's full contact details. `
+        + `Declining returns their token.\n\nThe request is open for seven days.\n\n${link}\n`,
+    };
+  }
+
   return {
     to,
     subject: `${senderName} invited you to Flaunt`,

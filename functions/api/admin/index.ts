@@ -1,5 +1,5 @@
 import type { AppSyncResolverEvent } from 'aws-lambda';
-import { QueryCommand, GetCommand, ScanCommand, TransactWriteCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { QueryCommand, GetCommand, ScanCommand, TransactWriteCommand, PutCommand, BatchGetCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import * as k from '../../shared/keys';
 import { ALLOWED_BUNDLE_SIZES, coerceBundleSize, isAllowedBundleSize } from '../../shared/pricing';
@@ -77,11 +77,24 @@ async function adminStats() {
   };
 }
 
+/**
+ * Lists invitations by state.
+ *
+ * GSI3 carries an INCLUDE projection chosen for the columns the BMS tables
+ * render, so it does NOT return inviteId, type or expiresAt — a projection
+ * cannot be altered after the index is created, and fields added to the model
+ * later do not appear in it retroactively. Only the base table's own key
+ * attributes are guaranteed.
+ *
+ * So the index is used for what it is good at — finding the matching rows
+ * cheaply — and the full items are then read from the base table. Deriving the
+ * missing fields from the key strings would work today and break silently the
+ * next time an attribute is added.
+ */
 async function adminInvitations(status?: string) {
-  const statuses = status && status !== 'ALL'
-    ? [status]
-    : Object.values(k.INVITE_STATUS);
-  const results = await Promise.all(statuses.map((s) =>
+  const statuses = status && status !== 'ALL' ? [status] : Object.values(k.INVITE_STATUS);
+
+  const found = await Promise.all(statuses.map((s) =>
     ddb.send(new QueryCommand({
       TableName: TABLE_NAME,
       IndexName: 'GSI3',
@@ -89,19 +102,35 @@ async function adminInvitations(status?: string) {
       ExpressionAttributeValues: { ':pk': `INVITE_STATUS#${s}` },
       ScanIndexForward: false,
       Limit: 50,
+      ProjectionExpression: 'PK, SK',
     }))
   ));
+
+  const keys = found.flatMap((r) => r.Items ?? []).map((i: any) => ({ PK: i.PK, SK: i.SK }));
+  if (keys.length === 0) return [];
+
+  // BatchGetItem takes at most 100 keys per request.
+  const chunks: any[][] = [];
+  for (let i = 0; i < keys.length; i += 100) chunks.push(keys.slice(i, i + 100));
+  const pages = await Promise.all(chunks.map((c) =>
+    ddb.send(new BatchGetCommand({ RequestItems: { [TABLE_NAME]: { Keys: c } } }))
+  ));
+  const items = pages.flatMap((p) => p.Responses?.[TABLE_NAME] ?? []);
+
   const now = Math.floor(Date.now() / 1000);
-  return results.flatMap((r) => r.Items ?? [])
+  return items
     .sort((a: any, b: any) => String(b.createdAt).localeCompare(String(a.createdAt)))
     .map((it: any) => {
       const live = it.status === k.INVITE_STATUS.PENDING;
       const refunded = (k.TERMINAL_REFUNDS_TOKEN as readonly string[]).includes(it.status);
       return {
-        inviteId: it.inviteId,
+        // Fall back to the key when an archive row predates the attribute.
+        inviteId: it.inviteId ?? String(it.PK).replace('INVITE#', ''),
+        senderName: null,
+        senderDesignation: null,
         recipientEmail: it.recipientEmail,
         status: it.status,
-        type: it.type,
+        type: it.type ?? 'DIRECT',
         createdAt: it.createdAt,
         expiresAt: it.expiresAt ?? null,
         daysLeft: live && it.expiresAt

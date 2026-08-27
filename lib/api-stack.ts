@@ -106,11 +106,13 @@ export class ApiStack extends Stack {
     const portalDs = this.api.addLambdaDataSource('PortalDataSource', portalFn);
     const adminDs = this.api.addLambdaDataSource('AdminDataSource', adminFn);
 
-    for (const field of ['me', 'myConnections', 'myInvitations', 'tokenPrice', 'searchPeople']) {
+    for (const field of ['me', 'myConnections', 'myInvitations', 'tokenPrice', 'searchPeople', 'invitation']) {
       portalDs.createResolver(`Query${field}`, { typeName: 'Query', fieldName: field });
     }
     portalDs.createResolver('MutationsendInvitation', { typeName: 'Mutation', fieldName: 'sendInvitation' });
     portalDs.createResolver('MutationupdateProfile', { typeName: 'Mutation', fieldName: 'updateProfile' });
+    portalDs.createResolver('MutationacceptInvitation', { typeName: 'Mutation', fieldName: 'acceptInvitation' });
+    portalDs.createResolver('MutationdeclineInvitation', { typeName: 'Mutation', fieldName: 'declineInvitation' });
 
     for (const field of ['adminUsers', 'adminStats', 'adminInvitations', 'adminPricingConfig']) {
       adminDs.createResolver(`Query${field}`, { typeName: 'Query', fieldName: field });

@@ -234,6 +234,7 @@ function reset() {
         me:null, connections:[], invites:[], price:null,
         loading:false, dataError:null, landed:false, newVersion:false, sending:false,
         stats:null, users:[], adminInvites:[], pricing:null, saving:false, profileError:null,
+        pendingInvite:null, inviteError:null, responding:false, profileDraft:null,
         auth:{ step: APP === 'portal' ? (INVITE ? 'signup' : 'choose') : 'email', email: (INVITE && INVITE.email) || (APP === 'bms' ? 'riyad@mobil80.com' : ''), busy:false, error:null, session:null } };
 }
 reset();
@@ -946,7 +947,9 @@ async function loadPortal() {
     S.price = d.tokenPrice;
     if (!S.landed) {
       S.landed = true;
-      go(S.connections.length > 0 ? '#/network' : '#/start');
+      const hasInvite = await loadInviteFromLink();
+      if (hasInvite) go('#/invite');
+      else go(S.connections.length > 0 ? '#/network' : '#/start');
     }
   } catch (e) {
     S.dataError = e.message;
@@ -957,22 +960,38 @@ async function loadPortal() {
 
 async function saveProfile() {
   const v = (id) => { const e = document.getElementById(id); return e ? e.value : ''; };
+  // Read every field BEFORE re-rendering. render() rebuilds the form from S.me,
+  // so reading afterwards returns the stored values and silently discards
+  // everything just typed — which showed up as "description is required" while
+  // the user was looking at the description they had written.
+  const payload = {
+    n: v('pf-name'), d: v('pf-designation'), o: v('pf-org'),
+    l: v('pf-location'), b: v('pf-bio'),
+  };
   S.saving = true; S.profileError = null; render();
   try {
     const d = await gql(`mutation Upd($n:String,$d:String,$o:String,$l:String,$b:String){
       updateProfile(name:$n, designation:$d, organisation:$o, location:$l, bio:$b){
         userId name designation organisation location bio country tokenBalance createdAt connectionCount email } }`,
-      { n: v('pf-name'), d: v('pf-designation'), o: v('pf-org'), l: v('pf-location'), b: v('pf-bio') });
+      payload);
     S.me = d.updateProfile;
+    S.profileDraft = null;
     toast('Profile updated.');
     go('#/network');
   } catch (e) {
     S.profileError = e.message;
+    // Hold the submitted values so a validation failure does not also wipe the
+    // form the user is being asked to correct.
+    S.profileDraft = payload;
   } finally { S.saving = false; render(); }
 }
 
 function vProfileEdit() {
-  const m = S.me || {};
+  const base = S.me || {};
+  const dr = S.profileDraft;
+  const m = dr ? {
+    ...base, name: dr.n, designation: dr.d, organisation: dr.o, location: dr.l, bio: dr.b,
+  } : base;
   const d = S.saving ? 'disabled' : '';
   const words = String(m.bio || '').trim() ? String(m.bio).trim().split(/\s+/).length : 0;
   return topbar('') + `<div class="wrap"><div class="col" style="max-width:560px;gap:24px;">
@@ -1011,7 +1030,7 @@ function vProfileEdit() {
     </div>
     <div style="display:flex;align-items:center;gap:16px;">
       <button class="btn" ${d} onclick="saveProfile()">${S.saving ? 'Saving…' : 'Save changes'}</button>
-      <button ${d} onclick="go('#/network')" style="background:none;border:none;font-size:13px;color:var(--ink-soft);">Cancel</button>
+      <button ${d} onclick="S.profileDraft=null;S.profileError=null;go('#/network');" style="background:none;border:none;font-size:13px;color:var(--ink-soft);">Cancel</button>
     </div>
   </div></div>`;
 }
@@ -1023,6 +1042,69 @@ function paintProfileCount() {
   const w = t ? t.split(/\s+/).length : 0;
   n.textContent = w + ' / 300 words';
   n.style.color = w > 300 ? 'var(--bad)' : (w > 270 ? 'var(--warn)' : 'var(--ink-soft)');
+}
+
+/**
+ * After authenticating through an invitation link, the invitation is loaded and
+ * the user is asked to accept or decline. Deliberately not auto-accepted:
+ * accepting reveals both parties' contact details to each other, which is not
+ * something to do on someone's behalf because they clicked a link in an email.
+ */
+async function loadInviteFromLink() {
+  if (!INVITE || !INVITE.inviteId) return false;
+  try {
+    const d = await gql(`query Inv($id:ID!){ invitation(inviteId:$id){
+      inviteId senderName senderDesignation recipientEmail status daysLeft } }`, { id: INVITE.inviteId });
+    if (d.invitation && d.invitation.status !== 'ACCEPTED') { S.pendingInvite = d.invitation; return true; }
+  } catch (e) {
+    S.inviteError = e.message;
+    return true;
+  }
+  return false;
+}
+
+async function respondToInvite(accept) {
+  S.responding = true; S.inviteError = null; render();
+  const op = accept ? 'acceptInvitation' : 'declineInvitation';
+  try {
+    await gql(`mutation R($id:ID!){ ${op}(inviteId:$id){ inviteId status } }`, { id: S.pendingInvite.inviteId });
+    S.pendingInvite = null;
+    // Clear the link params so a reload does not re-enter this flow.
+    history.replaceState(null, '', location.pathname);
+    await refreshPortal();
+    S.landed = true;
+    go(accept ? '#/network' : '#/start');
+    toast(accept ? 'Connected. You can both see each other in full now.' : 'Declined. Their token has been returned.');
+  } catch (e) {
+    S.inviteError = e.message;
+  } finally { S.responding = false; render(); }
+}
+
+function vInviteResponse() {
+  const inv = S.pendingInvite;
+  const d = S.responding ? 'disabled' : '';
+  return topbar('') + `<div class="wrap"><div class="col" style="max-width:600px;gap:28px;">
+    ${S.inviteError ? `<div role="alert" style="border:1px solid #E0C3C3;background:#FBF0F0;padding:12px 14px;font-size:13px;color:var(--bad);">${esc(S.inviteError)}</div>` : ''}
+    ${inv ? `
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <span class="lbl">Invitation</span>
+      <h1 class="serif" style="margin:0;font-size:clamp(26px,4.6vw,34px);font-weight:400;letter-spacing:-.015em;line-height:1.3;text-wrap:balance;">${esc(inv.senderName || 'Someone')} would like to connect with you.</h1>
+      ${inv.senderDesignation ? `<span style="font-size:14.5px;color:var(--ink-soft);">${esc(inv.senderDesignation)}</span>` : ''}
+    </div>
+    <div style="border:1px solid var(--rule-2);background:var(--raised);padding:22px 24px;display:flex;flex-direction:column;gap:12px;">
+      <p style="margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.65;">Accepting connects you both. You will each see the other's full profile, including email addresses.</p>
+      <p style="margin:0;font-size:13.5px;color:var(--ink-soft);line-height:1.65;">Declining returns their token. They are told you passed, not why.</p>
+      ${inv.daysLeft !== null && inv.daysLeft !== undefined ? `<p style="margin:0;font-size:12.5px;color:var(--warn);">${inv.daysLeft} day${inv.daysLeft===1?'':'s'} left to respond.</p>` : ''}
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
+      <button class="btn" ${d} onclick="respondToInvite(true)">${S.responding ? 'Working…' : 'Accept and connect'}</button>
+      <button class="btn ghost" ${d} onclick="respondToInvite(false)">Decline</button>
+    </div>` : `
+    <div style="display:flex;flex-direction:column;gap:12px;">
+      <h1 class="big">This invitation is not available</h1>
+      <button class="btn" onclick="S.inviteError=null;S.pendingInvite=null;history.replaceState(null,'',location.pathname);S.landed=true;go('#/start');render();">Continue to Flaunt</button>
+    </div>`}
+  </div></div>`;
 }
 
 async function refreshPortal() {
@@ -1450,6 +1532,7 @@ function view() {
   const h = location.hash || homeForApp();
   if (h === '#/signup') return vSignup();
   if (h === '#/welcome') return vWelcome();
+  if (h === '#/invite') return vInviteResponse();
   if (h === '#/start') return vFirstRun();
   if (h === '#/profile') return vProfileEdit();
   if (h === '#/invitations') return vInvitations();

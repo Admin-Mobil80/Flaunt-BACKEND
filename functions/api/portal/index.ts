@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import { priceForCountry, formatMinor, coerceBundleSize } from '../../shared/pricing';
 import * as k from '../../shared/keys';
-import { send, invitationEmail } from '../../shared/email';
+import { send, invitationEmail, refundEmail } from '../../shared/email';
 import {
   validateName, validateBio, validateDesignation, validateOrganisation, validateLocation,
   ValidationError,
@@ -71,7 +71,7 @@ async function myConnections(userId: string) {
   });
 }
 
-function shapeInvite(it: any) {
+function shapeInvite(it: any, sender?: any) {
   const now = Math.floor(Date.now() / 1000);
   const live = it.status === k.INVITE_STATUS.PENDING
     || it.status === k.INVITE_STATUS.PENDING_GATEKEEPER
@@ -82,6 +82,10 @@ function shapeInvite(it: any) {
   const refunded = (k.TERMINAL_REFUNDS_TOKEN as readonly string[]).includes(it.status);
   return {
     inviteId: it.inviteId,
+    senderName: sender?.name ?? it.senderName ?? null,
+    senderDesignation: sender
+      ? [sender.designation, sender.organisation].filter(Boolean).join(', ') || null
+      : null,
     recipientEmail: it.recipientEmail,
     status: it.status,
     type: it.type,
@@ -222,6 +226,8 @@ async function sendInvitation(userId: string, rawEmail: string) {
     senderName: profile.name,
     senderLine: `${profile.name}${senderLine ? ' — ' + senderLine : ''}`,
     inviteId,
+    // Already looked up above for the self-invite guard.
+    hasAccount: Boolean(existing.Item),
   }));
   if (!delivered) {
     console.error(JSON.stringify({ msg: 'invitation created but email failed', inviteId, recipientEmail }));
@@ -305,6 +311,191 @@ async function updateProfile(userId: string, args: any) {
   return me(userId);
 }
 
+/**
+ * Loads an invitation for the caller, refusing any that was not addressed to
+ * them. The invite id travels in a link, so possession of it cannot be the
+ * check — the caller's verified email has to match the recipient, or anyone
+ * holding a forwarded link could take someone else's place in the network.
+ */
+async function loadInvitationFor(userId: string, inviteId: string) {
+  const profile = await loadProfile(userId);
+  const { Item: inv } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.invite(inviteId) }));
+  if (!inv) throw new Error('That invitation no longer exists.');
+  if (k.normalizeEmail(inv.recipientEmail) !== k.normalizeEmail(profile.primaryEmail)) {
+    throw new Error('That invitation was sent to a different email address.');
+  }
+  return { profile, inv };
+}
+
+async function invitation(userId: string, inviteId: string) {
+  const { inv } = await loadInvitationFor(userId, inviteId);
+  const { Item: sender } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(inv.senderId) }));
+  return shapeInvite(inv, sender);
+}
+
+const OPEN_STATUSES = [
+  k.INVITE_STATUS.PENDING, k.INVITE_STATUS.PENDING_GATEKEEPER, k.INVITE_STATUS.INTRO_PENDING,
+] as readonly string[];
+
+/**
+ * Accepts an invitation and forms the connection.
+ *
+ * Connections are stored as a MIRRORED PAIR — one row under each party — written
+ * in the same transaction as the status change. A single row plus an index would
+ * make one direction eventually consistent, so a brand-new contact could be
+ * invisible to the very graph walk that gates introductions.
+ *
+ * `expiresAt` is removed here, not merely ignored. Leaving it would let TTL
+ * delete an accepted invitation and hand the sender back a token they legitimately
+ * spent; the stream handler also guards on status, but the attribute should not
+ * survive the transition that makes it meaningless.
+ */
+async function acceptInvitation(userId: string, inviteId: string) {
+  const { profile, inv } = await loadInvitationFor(userId, inviteId);
+
+  // Idempotent: a double-tap or a retried request must not write the pair twice.
+  if (inv.status === k.INVITE_STATUS.ACCEPTED) return shapeInvite(inv);
+  if (!OPEN_STATUSES.includes(inv.status)) {
+    throw new Error(`That invitation was already ${String(inv.status).toLowerCase()}.`);
+  }
+  if (inv.expiresAt && k.isExpired(Number(inv.expiresAt))) {
+    throw new Error('That invitation has expired. Ask them to send a new one.');
+  }
+  if (inv.senderId === userId) throw new Error('You cannot accept your own invitation.');
+
+  const now = new Date().toISOString();
+  const status = k.INVITE_STATUS.ACCEPTED;
+
+  await ddb.send(new TransactWriteCommand({
+    TransactItems: [
+      {
+        Update: {
+          TableName: TABLE_NAME,
+          Key: k.invite(inviteId),
+          UpdateExpression:
+            'SET #s = :s, acceptedAt = :now, recipientUserId = :uid, GSI2SK = :g2, GSI3PK = :g3pk, GSI3SK = :g3sk REMOVE expiresAt',
+          ConditionExpression: 'attribute_exists(PK) AND #s = :prev',
+          ExpressionAttributeNames: { '#s': 'status' },
+          ExpressionAttributeValues: {
+            ':s': status, ':prev': inv.status, ':now': now, ':uid': userId,
+            ':g2': `${status}#${inv.createdAt}`,
+            ':g3pk': `INVITE_STATUS#${status}`,
+            ':g3sk': `${inv.createdAt}#${inviteId}`,
+          },
+        },
+      },
+      {
+        Put: {
+          TableName: TABLE_NAME,
+          Item: {
+            ...k.connection(inv.senderId, userId),
+            entityType: 'CONNECTION', otherUserId: userId,
+            relationshipDegree: 1, connectedAt: now, viaInviteId: inviteId,
+          },
+        },
+      },
+      {
+        Put: {
+          TableName: TABLE_NAME,
+          Item: {
+            ...k.connection(userId, inv.senderId),
+            entityType: 'CONNECTION', otherUserId: inv.senderId,
+            relationshipDegree: 1, connectedAt: now, viaInviteId: inviteId,
+          },
+        },
+      },
+      {
+        Update: {
+          TableName: TABLE_NAME,
+          Key: k.statsGlobal(now.slice(0, 10)),
+          UpdateExpression: 'ADD invitesAccepted :one',
+          ExpressionAttributeValues: { ':one': 1 },
+        },
+      },
+    ],
+  }));
+
+  return shapeInvite({ ...inv, status, expiresAt: null });
+}
+
+/**
+ * Declines, and returns the sender's token (§3.4).
+ *
+ * The refund carries the same exactly-once marker the expiry path uses, so an
+ * invitation cannot be refunded twice by being declined and then expiring.
+ */
+async function declineInvitation(userId: string, inviteId: string) {
+  const { inv } = await loadInvitationFor(userId, inviteId);
+  if (inv.status === k.INVITE_STATUS.REJECTED) return shapeInvite(inv);
+  if (!OPEN_STATUSES.includes(inv.status)) {
+    throw new Error(`That invitation was already ${String(inv.status).toLowerCase()}.`);
+  }
+
+  const now = new Date().toISOString();
+  const status = k.INVITE_STATUS.REJECTED;
+
+  await ddb.send(new TransactWriteCommand({
+    TransactItems: [
+      {
+        Put: {
+          TableName: TABLE_NAME,
+          Item: { ...k.inviteRefundMarker(inviteId), entityType: 'INVITE_REFUND', refundedAt: now, reason: 'REJECTED' },
+          ConditionExpression: 'attribute_not_exists(PK)',
+        },
+      },
+      {
+        Update: {
+          TableName: TABLE_NAME,
+          Key: k.invite(inviteId),
+          UpdateExpression:
+            'SET #s = :s, GSI2SK = :g2, GSI3PK = :g3pk, GSI3SK = :g3sk REMOVE expiresAt',
+          ConditionExpression: 'attribute_exists(PK) AND #s = :prev',
+          ExpressionAttributeNames: { '#s': 'status' },
+          ExpressionAttributeValues: {
+            ':s': status, ':prev': inv.status,
+            ':g2': `${status}#${inv.createdAt}`,
+            ':g3pk': `INVITE_STATUS#${status}`,
+            ':g3sk': `${inv.createdAt}#${inviteId}`,
+          },
+        },
+      },
+      {
+        Update: {
+          TableName: TABLE_NAME,
+          Key: k.user(inv.senderId),
+          UpdateExpression: 'ADD tokenBalance :one',
+          ConditionExpression: 'attribute_exists(PK)',
+          ExpressionAttributeValues: { ':one': 1 },
+        },
+      },
+      {
+        Put: {
+          TableName: TABLE_NAME,
+          Item: {
+            ...k.transaction(inv.senderId, now),
+            entityType: 'TXN', delta: 1, reason: k.TXN_REASON.REFUND_REJECTED,
+            relatedId: inviteId, actorId: 'SYSTEM', createdAt: now,
+          },
+        },
+      },
+      {
+        Update: {
+          TableName: TABLE_NAME,
+          Key: k.statsGlobal(now.slice(0, 10)),
+          UpdateExpression: 'ADD invitesRejected :one, tokensRefunded :one',
+          ExpressionAttributeValues: { ':one': 1 },
+        },
+      },
+    ],
+  }));
+
+  const { Item: sender } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(inv.senderId) }));
+  if (sender?.primaryEmail) {
+    await send(refundEmail({ to: sender.primaryEmail, recipientEmail: inv.recipientEmail, reason: 'REJECTED' }));
+  }
+  return shapeInvite({ ...inv, status, expiresAt: null });
+}
+
 export const handler = async (event: AppSyncResolverEvent<any>) => {
   const field = (event as any).info?.fieldName;
   const userId = callerId(event);
@@ -315,6 +506,9 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'myConnections': return myConnections(userId);
     case 'myInvitations': return myInvitations(userId);
     case 'tokenPrice': return tokenPrice(userId);
+    case 'invitation': return invitation(userId, args.inviteId);
+    case 'acceptInvitation': return acceptInvitation(userId, args.inviteId);
+    case 'declineInvitation': return declineInvitation(userId, args.inviteId);
     case 'sendInvitation': return sendInvitation(userId, args.email);
     case 'updateProfile': return updateProfile(userId, args);
     // Name search needs the GSI3 NAME# namespace and the degree walk; until

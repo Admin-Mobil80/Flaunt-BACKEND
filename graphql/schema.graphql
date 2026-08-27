@@ -52,6 +52,8 @@ type Connection {
 
 type Invitation @aws_cognito_user_pools {
   inviteId: ID!
+  senderName: String
+  senderDesignation: String
   recipientEmail: String!
   status: String!
   type: String!
@@ -105,6 +107,8 @@ type Query {
   myConnections: [Connection!]!
   myInvitations: [Invitation!]!
   tokenPrice: BundlePrice!
+  # The invitation named by a link, returned only to the address it was sent to.
+  invitation(inviteId: ID!): Invitation
   searchPeople(query: String!): [Profile!]!
 
   adminUsers(limit: Int): [AdminUser!]! @aws_cognito_user_pools
@@ -119,6 +123,10 @@ type Mutation {
   sendInvitation(email: String!): Invitation!
   # Profile writes go through the API rather than Cognito attributes, so the bio
   # is bounded by DynamoDB rather than Cognito's 2048-character ceiling.
+  # Accepting spends the token for good and creates the connection both ways.
+  acceptInvitation(inviteId: ID!): Invitation!
+  # Declining returns the sender's token and tells them.
+  declineInvitation(inviteId: ID!): Invitation!
   updateProfile(
     name: String
     designation: String
