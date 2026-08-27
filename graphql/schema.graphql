@@ -24,7 +24,11 @@ type Profile {
   # Masked to riy**@mo******.com for 2nd degree, absent beyond it (§3.2).
   primaryEmail: String
   secondaryEmail: String
+  connectedAt: String
+  # 1 = direct, 2 = through a mutual connection, null = not visible.
   degree: Int
+  # Who could introduce you, when degree is 2.
+  viaName: String
 }
 
 type Me {
@@ -48,6 +52,8 @@ type Connection {
   organisation: String
   location: String
   connectedAt: String!
+  # How many direct connections they have. Their reach, not yours.
+  connectionCount: Int!
 }
 
 type Invitation @aws_cognito_user_pools {
@@ -114,10 +120,13 @@ type AdminStats @aws_cognito_user_pools {
 type Query {
   me: Me!
   myConnections: [Connection!]!
+  # People one step beyond your direct contacts, and who could introduce you.
+  secondDegree: [Profile!]!
   myInvitations: [Invitation!]!
   tokenPrice: BundlePrice!
   # The invitation named by a link, returned only to the address it was sent to.
   invitation(inviteId: ID!): Invitation
+  profile(userId: ID!): Profile
   searchPeople(query: String!): [Profile!]!
 
   adminUsers(limit: Int): [AdminUser!]! @aws_cognito_user_pools
@@ -139,6 +148,8 @@ type Mutation {
   declineInvitation(inviteId: ID!): Invitation!
   # Withdrawn by the sender while still pending. Returns their token.
   cancelInvitation(inviteId: ID!): Invitation!
+  # Removes the connection for BOTH people. There is no one-sided version.
+  removeConnection(userId: ID!): Boolean!
   updateProfile(
     name: String
     designation: String

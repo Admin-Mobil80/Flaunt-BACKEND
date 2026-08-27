@@ -75,7 +75,8 @@ export function invitationEmail(opts: {
    * carry only inviteId and resolve the address through an unauthenticated
    * lookup, which needs a public API surface that does not exist yet.
    */
-  const link = `${PORTAL_URL}/?invite=${encodeURIComponent(inviteId)}&email=${encodeURIComponent(to)}`;
+  const link = `${PORTAL_URL}/?invite=${encodeURIComponent(inviteId)}&email=${encodeURIComponent(to)}`
+    + (hasAccount ? '&existing=1' : '');
 
   /**
    * Two quite different messages, because the recipients are in different

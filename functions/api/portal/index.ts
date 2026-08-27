@@ -54,10 +54,23 @@ async function me(userId: string) {
 async function myConnections(userId: string) {
   const rows = await connectionRows(userId);
   if (rows.length === 0) return [];
-  // One read per contact. Fine at this size; becomes a BatchGet when it isn't.
-  const profiles = await Promise.all(
-    rows.map((r) => ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(r.otherUserId) })))
-  );
+
+  // Two reads per contact: their profile, and a COUNT of their own connections.
+  // Select: 'COUNT' returns only the tally, so a well-connected contact costs
+  // no more to display than a new one. Fine at this size; the profile read
+  // becomes a BatchGet when it isn't.
+  const [profiles, counts] = await Promise.all([
+    Promise.all(rows.map((r) =>
+      ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(r.otherUserId) })))),
+    Promise.all(rows.map((r) =>
+      ddb.send(new QueryCommand({
+        TableName: TABLE_NAME,
+        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+        ExpressionAttributeValues: { ':pk': `USER#${r.otherUserId}`, ':sk': k.PREFIX.CONNECTION },
+        Select: 'COUNT',
+      })))),
+  ]);
+
   return rows.map((r, i) => {
     const p = profiles[i].Item ?? {};
     return {
@@ -67,6 +80,7 @@ async function myConnections(userId: string) {
       organisation: p.organisation ?? null,
       location: p.location ?? null,
       connectedAt: r.connectedAt,
+      connectionCount: counts[i].Count ?? 0,
     };
   });
 }
@@ -581,6 +595,165 @@ async function cancelInvitation(userId: string, inviteId: string) {
   return shapeInvite({ ...inv, status, expiresAt: null });
 }
 
+/**
+ * One person's profile, graded by how far they are from the caller (§3.2).
+ *
+ * Degree is computed, never stored: persisting it would mean rewriting O(n²)
+ * rows every time anyone connects.
+ *
+ * The walk is two queries, not a fan-out. The obvious implementation reads the
+ * caller's contacts and then each of THEIR contacts — one query per contact,
+ * on the hot path of every profile view. Reading both sides and intersecting
+ * gets the same answer, and the same mutual connection the introduction flow
+ * needs, in a fixed two reads however large the network grows.
+ */
+async function profile(callerId: string, targetId: string) {
+  const target = await loadProfile(targetId);
+
+  const base = {
+    userId: targetId,
+    name: target.name,
+    designation: target.designation ?? null,
+    // Title and employer are what a person publishes to be found
+    // professionally, so they travel to every tier.
+    organisation: target.organisation ?? null,
+    bio: target.bio ?? null,
+    country: target.country,
+  };
+
+  if (callerId === targetId) {
+    return { ...base, location: target.location ?? null, primaryEmail: target.primaryEmail,
+      secondaryEmail: target.secondaryEmail ?? null, degree: 0, viaName: null, connectedAt: null };
+  }
+
+  const { Item: direct } = await ddb.send(new GetCommand({
+    TableName: TABLE_NAME, Key: k.connection(callerId, targetId),
+  }));
+  if (direct) {
+    return { ...base, location: target.location ?? null, primaryEmail: target.primaryEmail,
+      secondaryEmail: target.secondaryEmail ?? null, degree: 1, viaName: null,
+      connectedAt: direct.connectedAt ?? null };
+  }
+
+  const [mine, theirs] = await Promise.all([connectionRows(callerId), connectionRows(targetId)]);
+  const mineIds = new Set(mine.map((r: any) => r.otherUserId));
+  const mutualId = theirs.map((r: any) => r.otherUserId).find((id: string) => mineIds.has(id));
+
+  if (mutualId) {
+    const { Item: via } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(mutualId) }));
+    return {
+      ...base,
+      // Personal geography does not serve the "be found professionally" purpose
+      // and narrows a person considerably, so it stops at the first degree.
+      location: null,
+      primaryEmail: k.maskEmail(target.primaryEmail),
+      secondaryEmail: null,
+      degree: 2,
+      viaName: via?.name ?? null,
+      connectedAt: null,
+    };
+  }
+
+  // Third degree and beyond: name, what they do, nothing that reaches them.
+  return { ...base, location: null, primaryEmail: null, secondaryEmail: null,
+    degree: null, viaName: null, connectedAt: null };
+}
+
+/**
+ * Removes a connection.
+ *
+ * Both mirrored rows go in one transaction. Deleting only the caller's side
+ * would leave the other person still holding a row pointing at someone who no
+ * longer lists them — a half-connection that the degree walk would read
+ * differently depending on which end it started from.
+ *
+ * No token is returned: the token bought the introduction, and it happened.
+ */
+async function removeConnection(userId: string, otherId: string) {
+  const { Item: existing } = await ddb.send(new GetCommand({
+    TableName: TABLE_NAME, Key: k.connection(userId, otherId),
+  }));
+  if (!existing) return true; // already gone
+
+  await ddb.send(new TransactWriteCommand({
+    TransactItems: [
+      { Delete: { TableName: TABLE_NAME, Key: k.connection(userId, otherId) } },
+      { Delete: { TableName: TABLE_NAME, Key: k.connection(otherId, userId) } },
+    ],
+  }));
+  return true;
+}
+
+/** Caps the fan-out below. See the note in secondDegree. */
+const SECOND_DEGREE_FAN_OUT = 60;
+
+/**
+ * Everyone one step beyond the caller's direct contacts.
+ *
+ * This is the one genuinely expensive read in the app: it queries each direct
+ * contact's connections, so it costs 1 + |contacts| queries. Resolving a SINGLE
+ * profile's degree does not work this way — that intersects two contact lists
+ * in two reads — but building the whole set has no such shortcut.
+ *
+ * So the fan-out is capped rather than unbounded. Past the cap the list is
+ * incomplete rather than slow, which is the better failure for a browsing view;
+ * the profile query stays exact, so nothing that matters is decided from a
+ * truncated set.
+ *
+ * Emails are omitted entirely here. The masked address belongs on the profile,
+ * where it is one person's detail, not sprayed across a list.
+ */
+async function secondDegree(userId: string) {
+  const mine = await connectionRows(userId);
+  if (mine.length === 0) return [];
+  const direct = new Set(mine.map((r: any) => r.otherUserId));
+
+  const lists = await Promise.all(
+    mine.slice(0, SECOND_DEGREE_FAN_OUT).map(async (r: any) => ({
+      viaId: r.otherUserId,
+      rows: await connectionRows(r.otherUserId),
+    }))
+  );
+
+  // First contact to reach someone becomes the introducer shown for them.
+  const found = new Map<string, string>();
+  for (const { viaId, rows } of lists) {
+    for (const row of rows as any[]) {
+      const id = row.otherUserId;
+      if (id === userId || direct.has(id) || found.has(id)) continue;
+      found.set(id, viaId);
+    }
+  }
+  if (found.size === 0) return [];
+
+  const ids = [...found.keys()];
+  const [people, vias] = await Promise.all([
+    Promise.all(ids.map((id) => ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(id) })))),
+    Promise.all([...new Set(found.values())].map(async (id) => ({
+      id, item: (await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(id) }))).Item,
+    }))),
+  ]);
+  const viaName = new Map(vias.map((v) => [v.id, v.item?.name ?? null]));
+
+  return ids.map((id, i) => {
+    const p = people[i].Item ?? {};
+    return {
+      userId: id,
+      name: p.name ?? 'Unknown',
+      designation: p.designation ?? null,
+      organisation: p.organisation ?? null,
+      location: null,
+      bio: p.bio ?? null,
+      country: p.country ?? '',
+      primaryEmail: null,
+      secondaryEmail: null,
+      connectedAt: null,
+      degree: 2,
+      viaName: viaName.get(found.get(id)!) ?? null,
+    };
+  }).sort((x, y) => String(x.name).localeCompare(String(y.name)));
+}
+
 export const handler = async (event: AppSyncResolverEvent<any>) => {
   const field = (event as any).info?.fieldName;
   const userId = callerId(event);
@@ -589,12 +762,15 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
   switch (field) {
     case 'me': return me(userId);
     case 'myConnections': return myConnections(userId);
+    case 'secondDegree': return secondDegree(userId);
     case 'myInvitations': return myInvitations(userId);
     case 'tokenPrice': return tokenPrice(userId);
     case 'invitation': return invitation(userId, args.inviteId);
+    case 'profile': return profile(userId, args.userId);
     case 'acceptInvitation': return acceptInvitation(userId, args.inviteId);
     case 'declineInvitation': return declineInvitation(userId, args.inviteId);
     case 'cancelInvitation': return cancelInvitation(userId, args.inviteId);
+    case 'removeConnection': return removeConnection(userId, args.userId);
     case 'sendInvitation': return sendInvitation(userId, args.email);
     case 'updateProfile': return updateProfile(userId, args);
     // Name search needs the GSI3 NAME# namespace and the degree walk; until
