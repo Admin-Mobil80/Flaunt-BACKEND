@@ -61,8 +61,19 @@ export async function send(mail: Mail): Promise<boolean> {
   }
 }
 
-export function invitationEmail(opts: { to: string; senderName: string; senderLine: string }): Mail {
-  const { to, senderName, senderLine } = opts;
+export function invitationEmail(opts: { to: string; senderName: string; senderLine: string; inviteId: string }): Mail {
+  const { to, senderName, senderLine, inviteId } = opts;
+  /**
+   * The link carries the invited address so sign-up can prefill it. Without
+   * that the recipient retypes an address they never chose, and a single
+   * mistyped character silently creates an unrelated account whose OTP goes to
+   * a mailbox nobody is watching — which is exactly what happened in testing.
+   *
+   * It does put the address into CloudFront access logs. The alternative is to
+   * carry only inviteId and resolve the address through an unauthenticated
+   * lookup, which needs a public API surface that does not exist yet.
+   */
+  const link = `${PORTAL_URL}/?invite=${encodeURIComponent(inviteId)}&email=${encodeURIComponent(to)}`;
   return {
     to,
     subject: `${senderName} invited you to Flaunt`,
@@ -71,11 +82,11 @@ export function invitationEmail(opts: { to: string; senderName: string; senderLi
       `<p style="margin:0 0 12px;">${escapeHtml(senderLine)}</p>
        <p style="margin:0 0 12px;">Flaunt is a small professional network with no feed and no algorithm. You can only join if someone invites you, and they spent a token to do it.</p>
        <p style="margin:0;">The invitation is open for seven days.</p>`,
-      { label: 'Accept the invitation', url: PORTAL_URL }
+      { label: 'Accept the invitation', url: link }
     ),
     text: `${senderName} invited you to Flaunt.\n\n${senderLine}\n\n`
       + `Flaunt is a small professional network with no feed and no algorithm. You can only join if someone invites you.\n\n`
-      + `The invitation is open for seven days.\n\nAccept: ${PORTAL_URL}\n`,
+      + `The invitation is open for seven days.\n\nAccept: ${link}\n`,
   };
 }
 

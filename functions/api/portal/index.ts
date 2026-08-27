@@ -217,6 +217,7 @@ async function sendInvitation(userId: string, rawEmail: string) {
     to: recipientEmail,
     senderName: profile.name,
     senderLine: `${profile.name}${senderLine ? ' — ' + senderLine : ''}`,
+    inviteId,
   }));
   if (!delivered) {
     console.error(JSON.stringify({ msg: 'invitation created but email failed', inviteId, recipientEmail }));

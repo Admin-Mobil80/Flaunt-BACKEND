@@ -212,6 +212,20 @@ var BUILD_ID = '__BUILD_ID__';
 var API_READY = API_URL.indexOf('__') !== 0;
 var AUTH_READY = AUTH.clientId.indexOf('__') !== 0;
 var SESSION_KEY = 'flaunt.' + APP;
+
+/**
+ * An invitation link arrives as ?invite=<id>&email=<address>. Prefilling the
+ * address matters more than it looks: the recipient never chose it, and one
+ * mistyped character creates an unrelated account whose sign-in code goes to a
+ * mailbox they are not watching.
+ */
+var INVITE = (function () {
+  try {
+    const q = new URLSearchParams(location.search);
+    const email = (q.get('email') || '').trim().toLowerCase();
+    return email ? { email, inviteId: q.get('invite') || null } : null;
+  } catch (e) { return null; }
+})();
 var S = {};   // var, not let: inline on* handlers resolve through window
 function reset() {
   S = { balance:10, bio:SEED_BIO, invFilter:'all', bmsFilter:'ALL', modal:null, toast:null,
@@ -220,7 +234,7 @@ function reset() {
         me:null, connections:[], invites:[], price:null,
         loading:false, dataError:null, landed:false, newVersion:false, sending:false,
         stats:null, users:[], adminInvites:[], pricing:null,
-        auth:{ step: APP === 'portal' ? 'choose' : 'email', email: APP === 'bms' ? 'riyad@mobil80.com' : '', busy:false, error:null, session:null } };
+        auth:{ step: APP === 'portal' ? (INVITE ? 'signup' : 'choose') : 'email', email: (INVITE && INVITE.email) || (APP === 'bms' ? 'riyad@mobil80.com' : ''), busy:false, error:null, session:null } };
 }
 reset();
 
@@ -1191,12 +1205,16 @@ function vPortalAuth() {
   if (a.step === 'signup') {
     return shell(`
       <div style="display:flex;flex-direction:column;gap:7px;">
-        <h1 class="big">Create your account</h1>
-        <p style="margin:0;font-size:14px;color:var(--ink-soft);">Eight fields, once. Flaunt keeps nothing else about you.</p>
+        <h1 class="big">${INVITE ? 'Accept your invitation' : 'Create your account'}</h1>
+        <p style="margin:0;font-size:14px;color:var(--ink-soft);">${INVITE
+          ? 'You were invited to Flaunt. Complete your profile and we will email you a code.'
+          : 'Eight fields, once. Flaunt keeps nothing else about you.'}</p>
       </div>
       <div style="display:flex;flex-direction:column;gap:7px;">
         <label class="lbl" for="su-email">Email</label>
-        <input class="field mono" id="su-email" type="email" ${d} style="font-size:13.5px;">
+        <input class="field mono" id="su-email" type="email" ${d} style="font-size:13.5px;"
+          value="${esc(INVITE ? INVITE.email : (a.email || ''))}"${INVITE ? ' readonly' : ''}>
+        ${INVITE ? `<span style="font-size:12px;color:var(--faint);">This is the address your invitation was sent to.</span>` : ''}
       </div>
       <div style="display:flex;flex-direction:column;gap:7px;">
         <label class="lbl" for="su-name">Full name</label>
