@@ -113,12 +113,14 @@ export class ApiStack extends Stack {
     portalDs.createResolver('MutationupdateProfile', { typeName: 'Mutation', fieldName: 'updateProfile' });
     portalDs.createResolver('MutationacceptInvitation', { typeName: 'Mutation', fieldName: 'acceptInvitation' });
     portalDs.createResolver('MutationdeclineInvitation', { typeName: 'Mutation', fieldName: 'declineInvitation' });
+    portalDs.createResolver('MutationcancelInvitation', { typeName: 'Mutation', fieldName: 'cancelInvitation' });
 
-    for (const field of ['adminUsers', 'adminStats', 'adminInvitations', 'adminPricingConfig']) {
+    for (const field of ['adminUsers', 'adminStats', 'adminInvitations', 'adminPricingConfig', 'adminPaymentConfig']) {
       adminDs.createResolver(`Query${field}`, { typeName: 'Query', fieldName: field });
     }
     adminDs.createResolver('MutationadminAdjustTokens', { typeName: 'Mutation', fieldName: 'adminAdjustTokens' });
     adminDs.createResolver('MutationadminSetTokensPerBundle', { typeName: 'Mutation', fieldName: 'adminSetTokensPerBundle' });
+    adminDs.createResolver('MutationadminSetPaymentMode', { typeName: 'Mutation', fieldName: 'adminSetPaymentMode' });
 
     new CfnOutput(this, 'GraphqlUrl', { value: this.api.graphqlUrl });
   }

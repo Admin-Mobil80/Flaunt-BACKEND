@@ -95,6 +95,15 @@ type PricingConfig @aws_cognito_user_pools {
   updatedBy: String
 }
 
+type PaymentConfig @aws_cognito_user_pools {
+  mode: String!
+  modes: [String!]!
+  secretName: String!
+  live: Boolean!
+  updatedAt: String
+  updatedBy: String
+}
+
 type AdminStats @aws_cognito_user_pools {
   totalUsers: Int!
   usersIndia: Int!
@@ -115,6 +124,7 @@ type Query {
   adminStats: AdminStats! @aws_cognito_user_pools
   adminInvitations(status: String): [Invitation!]! @aws_cognito_user_pools
   adminPricingConfig: PricingConfig! @aws_cognito_user_pools
+  adminPaymentConfig: PaymentConfig! @aws_cognito_user_pools
 }
 
 type Mutation {
@@ -127,6 +137,8 @@ type Mutation {
   acceptInvitation(inviteId: ID!): Invitation!
   # Declining returns the sender's token and tells them.
   declineInvitation(inviteId: ID!): Invitation!
+  # Withdrawn by the sender while still pending. Returns their token.
+  cancelInvitation(inviteId: ID!): Invitation!
   updateProfile(
     name: String
     designation: String
@@ -138,6 +150,9 @@ type Mutation {
   # How many tokens a bundle contains. The amount charged does not change —
   # only what it buys. Restricted to 25, 50, 75 or 100.
   adminSetTokensPerBundle(tokens: Int!): PricingConfig! @aws_cognito_user_pools
+  # Switches which Razorpay environment the billing integration uses. "live"
+  # means real cards are charged.
+  adminSetPaymentMode(mode: String!): PaymentConfig! @aws_cognito_user_pools
 }
 
 schema {

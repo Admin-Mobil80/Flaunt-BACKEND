@@ -256,3 +256,29 @@ describe('configurable bundle size (set from BMS)', () => {
     expect(priceForCountry('IN', 9999).tokens).toBe(25);
   });
 });
+
+import { PAYMENT_MODES, coercePaymentMode, isPaymentMode, DEFAULT_PAYMENT_MODE,
+  RAZORPAY_SECRET_BY_MODE } from '../functions/shared/pricing';
+
+describe('payment mode (test vs live Razorpay)', () => {
+  test('exactly two modes, each mapped to its own credential set', () => {
+    expect(PAYMENT_MODES).toEqual(['test', 'live']);
+    expect(RAZORPAY_SECRET_BY_MODE.test).not.toBe(RAZORPAY_SECRET_BY_MODE.live);
+  });
+
+  // The whole point of the guard: a missing or corrupted setting must never
+  // fall through to charging real cards.
+  test('anything unrecognised resolves to test, never live', () => {
+    for (const bad of [undefined, null, '', 'LIVE', 'production', 'prod', 0, true, {}]) {
+      expect(coercePaymentMode(bad as any)).toBe('test');
+    }
+    expect(DEFAULT_PAYMENT_MODE).toBe('test');
+  });
+
+  test('only the exact lowercase strings are accepted', () => {
+    expect(isPaymentMode('test')).toBe(true);
+    expect(isPaymentMode('live')).toBe(true);
+    expect(isPaymentMode('Live')).toBe(false);
+    expect(isPaymentMode('sandbox')).toBe(false);
+  });
+});

@@ -2,7 +2,10 @@ import type { AppSyncResolverEvent } from 'aws-lambda';
 import { QueryCommand, GetCommand, ScanCommand, TransactWriteCommand, PutCommand, BatchGetCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import * as k from '../../shared/keys';
-import { ALLOWED_BUNDLE_SIZES, coerceBundleSize, isAllowedBundleSize } from '../../shared/pricing';
+import {
+  ALLOWED_BUNDLE_SIZES, coerceBundleSize, isAllowedBundleSize,
+  PAYMENT_MODES, coercePaymentMode, isPaymentMode, RAZORPAY_SECRET_BY_MODE,
+} from '../../shared/pricing';
 
 const ROOT_ADMIN_EMAIL = (process.env.ROOT_ADMIN_EMAIL ?? '').toLowerCase();
 const BMS_POOL_ID = process.env.BMS_USER_POOL_ID ?? '';
@@ -263,6 +266,42 @@ async function adminSetTokensPerBundle(admin: string, tokens: number) {
   return adminPricingConfig();
 }
 
+async function adminPaymentConfig() {
+  const { Item } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.paymentConfig() }));
+  const mode = coercePaymentMode(Item?.mode);
+  return {
+    mode,
+    modes: [...PAYMENT_MODES],
+    secretName: RAZORPAY_SECRET_BY_MODE[mode],
+    live: mode === 'live',
+    updatedAt: Item?.updatedAt ?? null,
+    updatedBy: Item?.updatedBy ?? null,
+  };
+}
+
+/**
+ * Switches Razorpay environments. Going live means real cards are charged, so
+ * the change is audited with who made it — the same treatment a balance
+ * override gets, for the same reason.
+ */
+async function adminSetPaymentMode(admin: string, mode: string) {
+  if (!isPaymentMode(mode)) throw new Error(`Payment mode must be one of ${PAYMENT_MODES.join(', ')}.`);
+  const now = new Date().toISOString();
+  await ddb.send(new PutCommand({
+    TableName: TABLE_NAME,
+    Item: { ...k.paymentConfig(), entityType: 'CONFIG', mode, updatedAt: now, updatedBy: admin },
+  }));
+  await ddb.send(new PutCommand({
+    TableName: TABLE_NAME,
+    Item: {
+      ...k.transaction('CONFIG', now),
+      entityType: 'TXN', delta: 0, reason: k.TXN_REASON.PAYMENT_MODE_CHANGED,
+      note: `payment mode set to ${mode}`, actorId: admin, createdAt: now,
+    },
+  }));
+  return adminPaymentConfig();
+}
+
 export const handler = async (event: AppSyncResolverEvent<any>) => {
   const admin = assertAdmin(event);
   const field = (event as any).info?.fieldName;
@@ -273,6 +312,8 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'adminStats': return adminStats();
     case 'adminInvitations': return adminInvitations(args.status);
     case 'adminPricingConfig': return adminPricingConfig();
+    case 'adminPaymentConfig': return adminPaymentConfig();
+    case 'adminSetPaymentMode': return adminSetPaymentMode(admin, args.mode);
     case 'adminSetTokensPerBundle': return adminSetTokensPerBundle(admin, args.tokens);
     case 'adminAdjustTokens': return adminAdjustTokens(admin, args.userId, args.delta, args.reason);
     default: throw new Error(`Unknown field ${field}`);

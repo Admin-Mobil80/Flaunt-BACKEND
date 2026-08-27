@@ -233,7 +233,7 @@ function reset() {
         connected:{}, introAsked:false,
         me:null, connections:[], invites:[], price:null,
         loading:false, dataError:null, landed:false, newVersion:false, sending:false,
-        stats:null, users:[], adminInvites:[], pricing:null, saving:false, profileError:null,
+        stats:null, users:[], adminInvites:[], pricing:null, payment:null, saving:false, profileError:null,
         pendingInvite:null, inviteError:null, responding:false, profileDraft:null,
         auth:{ step: APP === 'portal' ? (INVITE ? 'signup' : 'choose') : 'email', email: (INVITE && INVITE.email) || (APP === 'bms' ? 'riyad@mobil80.com' : ''), busy:false, error:null, session:null } };
 }
@@ -511,7 +511,7 @@ function vFirstRun() {
 }
 
 function vInvitations() {
-  const TABS = [['all','All'],['PENDING','Open'],['ACCEPTED','Accepted'],['REJECTED','Declined'],['EXPIRED','Expired']];
+  const TABS = [['all','All'],['PENDING','Open'],['ACCEPTED','Accepted'],['REJECTED','Declined'],['EXPIRED','Expired'],['CANCELLED','Cancelled']];
   const tabs = TABS.map(([id,label]) => {
     const n = id==='all' ? S.invites.length : S.invites.filter((r)=>r.status===id).length;
     const on = S.invFilter===id;
@@ -530,6 +530,8 @@ function vInvitations() {
   const rows = shown.map((r) => {
     const t = tone(r.status);
     const back = r.tokenOutcome.indexOf('returned') > -1;
+    // Only an invitation nobody has acted on can be withdrawn.
+    const open_ = ['PENDING','PENDING_GATEKEEPER','INTRO_PENDING'].indexOf(r.status) > -1;
     return `<div style="display:flex;align-items:center;gap:18px;padding:18px 0;border-bottom:1px solid var(--rule);flex-wrap:wrap;">
       <div style="display:flex;flex-direction:column;gap:2px;width:min(300px,100%);flex-shrink:0;">
         <span class="mono" style="font-size:13.5px;">${esc(r.recipientEmail)}</span>
@@ -541,9 +543,13 @@ function vInvitations() {
       <div style="flex-grow:1;min-width:120px;font-size:12.5px;color:var(--ink-2);">
         ${r.daysLeft !== null && r.daysLeft !== undefined ? esc(r.daysLeft + ' day' + (r.daysLeft===1?'':'s') + ' left') : ''}
       </div>
-      <div style="display:flex;align-items:center;gap:7px;width:150px;flex-shrink:0;justify-content:flex-end;">
-        ${back?`<span style="color:var(--good);display:flex;">${RETURN}</span>`:''}
-        <span style="font-size:12.5px;color:${back?'var(--good)':'var(--ink-soft)'};font-weight:${back?500:400};">${esc(r.tokenOutcome)}</span>
+      <div style="display:flex;align-items:center;gap:12px;width:230px;flex-shrink:0;justify-content:flex-end;">
+        <span style="display:flex;align-items:center;gap:7px;">
+          ${back?`<span style="color:var(--good);display:flex;">${RETURN}</span>`:''}
+          <span style="font-size:12.5px;color:${back?'var(--good)':'var(--ink-soft)'};font-weight:${back?500:400};">${esc(r.tokenOutcome)}</span>
+        </span>
+        ${open_ ? `<button onclick="cancelInvite('${r.inviteId}','${esc(r.recipientEmail)}')"
+          style="background:none;border:1px solid var(--rule-2);color:var(--ink-soft);font-size:11.5px;padding:5px 10px;">Cancel</button>` : ''}
       </div>
     </div>`;
   }).join('');
@@ -655,6 +661,7 @@ const Q_ADMIN = `query Admin {
   adminUsers(limit: 50) { userId name email country tokenBalance connectionCount createdAt }
   adminInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome }
   adminPricingConfig { tokensPerBundle allowedSizes updatedAt updatedBy }
+  adminPaymentConfig { mode modes secretName live updatedAt updatedBy }
 }`;
 
 async function loadBms() {
@@ -665,6 +672,7 @@ async function loadBms() {
     S.users = d.adminUsers || [];
     S.adminInvites = d.adminInvitations || [];
     S.pricing = d.adminPricingConfig;
+    S.payment = d.adminPaymentConfig;
   } catch (e) { S.dataError = e.message; }
   finally { S.loading = false; render(); }
 }
@@ -674,6 +682,22 @@ async function adjustTokens(userId, delta) {
     await gql(`mutation Adj($u:ID!,$d:Int!){ adminAdjustTokens(userId:$u, delta:$d){ userId tokenBalance } }`,
       { u: userId, d: delta });
     await loadBms();
+  } catch (e) { toast(e.message); }
+}
+
+/**
+ * Switching to live means real cards are charged, so it asks first. Switching
+ * back to test is harmless and does not.
+ */
+async function setPaymentMode(mode) {
+  if (mode === 'live') {
+    const ok = confirm('Switch to the LIVE Razorpay gateway?\n\nReal cards will be charged and real money will move. Only do this when you are ready to take payments.');
+    if (!ok) return;
+  }
+  try {
+    await gql(`mutation SetM($m:String!){ adminSetPaymentMode(mode:$m){ mode live secretName } }`, { m: mode });
+    await loadBms();
+    toast(mode === 'live' ? 'LIVE gateway active — real cards will be charged.' : 'Test gateway active. No real money moves.');
   } catch (e) { toast(e.message); }
 }
 
@@ -756,6 +780,50 @@ function vBmsUsers() {
       <div><span class="lbl">Tokens outstanding</span><span class="mono" style="font-size:19px;font-weight:600;">${st.tokensOutstanding}</span></div>
       <div><span class="lbl">Tokens per $5.00</span><span class="mono" style="font-size:19px;font-weight:600;color:var(--bms-accent);">${pc ? pc.tokensPerBundle : '—'}</span></div>
     </div>
+
+    ${(function () {
+      const pm = S.payment;
+      const live = pm && pm.live;
+      const modeBtn = (m, label, sub) => {
+        const on = pm && pm.mode === m;
+        const danger = m === 'live';
+        return `<button onclick="setPaymentMode('${m}')" aria-current="${on}"
+          style="flex:1;min-width:190px;text-align:left;padding:13px 15px;cursor:pointer;
+            border:1.5px solid ${on ? (danger ? 'var(--bms-bad)' : 'var(--bms-good)') : 'var(--bms-rule-2)'};
+            background:${on ? (danger ? 'var(--bms-bad-wash)' : 'var(--bms-good-wash)') : 'var(--bms-panel)'};
+            display:flex;flex-direction:column;gap:3px;">
+          <span style="display:flex;align-items:center;gap:7px;font-size:13.5px;font-weight:${on?700:500};
+            color:${on ? (danger ? 'var(--bms-bad)' : 'var(--bms-good)') : 'var(--bms-soft)'};">
+            ${on ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12.5 L10 17.5 L19 7"/></svg>` : ''}${label}</span>
+          <span style="font-size:11.5px;color:var(--bms-mute);">${sub}</span>
+        </button>`;
+      };
+      return `<div style="border:1.5px solid ${live ? 'var(--bms-bad)' : 'var(--bms-rule)'};
+          background:var(--bms-panel);padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+          <div style="display:flex;flex-direction:column;gap:3px;">
+            <span style="font-size:13px;font-weight:600;">Payment gateway</span>
+            <span style="font-size:11.5px;color:var(--bms-mute);max-width:70ch;">Which Razorpay environment billing uses. Test and live are separate environments with their own keys and webhook secrets, so this switches the whole credential set.</span>
+          </div>
+          <span class="chip" style="padding:4px 10px;
+            border-color:${live ? 'var(--bms-bad-line)' : 'var(--bms-good-line)'};
+            background:${live ? 'var(--bms-bad-wash)' : 'var(--bms-good-wash)'};">
+            <span class="dot" style="background:${live ? 'var(--bms-bad)' : 'var(--bms-good)'};"></span>
+            <span class="mono" style="font-size:10.5px;letter-spacing:.07em;color:${live ? 'var(--bms-bad)' : 'var(--bms-good)'};">${pm ? pm.mode.toUpperCase() : '—'}</span>
+          </span>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          ${modeBtn('test','Test gateway','Fake cards. No money moves.')}
+          ${modeBtn('live','Live gateway','Real cards are charged.')}
+        </div>
+        <div style="display:flex;align-items:center;gap:9px;border-top:1px solid var(--bms-rule);padding-top:11px;flex-wrap:wrap;">
+          <span class="lbl">Credentials</span>
+          <span class="mono" style="font-size:11.5px;color:var(--bms-soft);">${pm ? esc(pm.secretName) : '—'}</span>
+        </div>
+        ${pm && pm.updatedAt ? `<span style="font-size:11px;color:var(--bms-mute);">Last changed ${esc(String(pm.updatedAt).slice(0,16).replace('T',' '))} by ${esc(pm.updatedBy || 'unknown')}</span>` : `<span style="font-size:11px;color:var(--bms-mute);">Never changed — defaults to test.</span>`}
+        <span style="font-size:11px;color:var(--bms-warn);">Billing is not built yet, so nothing reads this setting today. It is what the Razorpay integration will use when it lands.</span>
+      </div>`;
+    })()}
 
     <div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
       <div style="display:flex;flex-direction:column;gap:3px;">
@@ -1105,6 +1173,15 @@ function vInviteResponse() {
       <button class="btn" onclick="S.inviteError=null;S.pendingInvite=null;history.replaceState(null,'',location.pathname);S.landed=true;go('#/start');render();">Continue to Flaunt</button>
     </div>`}
   </div></div>`;
+}
+
+async function cancelInvite(inviteId, email) {
+  if (!confirm('Cancel the invitation to ' + email + '?\n\nYour token is returned and they will not be able to accept it.')) return;
+  try {
+    await gql(`mutation Cancel($id:ID!){ cancelInvitation(inviteId:$id){ inviteId status } }`, { id: inviteId });
+    await refreshPortal();
+    toast('Invitation cancelled — your token has been returned.');
+  } catch (e) { toast(e.message); }
 }
 
 async function refreshPortal() {

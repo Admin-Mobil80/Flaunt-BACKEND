@@ -16,6 +16,7 @@ export const INVITE_STATUS = {
   REJECTED: 'REJECTED',
   GATEKEEPER_DENIED: 'GATEKEEPER_DENIED',
   EXPIRED: 'EXPIRED',
+  CANCELLED: 'CANCELLED',
 } as const;
 
 export type InviteStatus = (typeof INVITE_STATUS)[keyof typeof INVITE_STATUS];
@@ -27,6 +28,9 @@ export const TERMINAL_REFUNDS_TOKEN: readonly InviteStatus[] = [
   INVITE_STATUS.REJECTED,
   INVITE_STATUS.GATEKEEPER_DENIED,
   INVITE_STATUS.EXPIRED,
+  // Withdrawn by the sender before anyone acted on it. The token returns for
+  // the same reason as the others: no connection was made.
+  INVITE_STATUS.CANCELLED,
 ];
 
 export const TXN_REASON = {
@@ -35,10 +39,12 @@ export const TXN_REASON = {
   INTRO_REQUESTED: 'INTRO_REQUESTED',
   REFUND_REJECTED: 'REFUND_REJECTED',
   REFUND_EXPIRED: 'REFUND_EXPIRED',
+  REFUND_CANCELLED: 'REFUND_CANCELLED',
   REFUND_GATEKEEPER_DENIED: 'REFUND_GATEKEEPER_DENIED',
   PURCHASE: 'PURCHASE',
   ADMIN_OVERRIDE: 'ADMIN_OVERRIDE',
   PRICING_CHANGED: 'PRICING_CHANGED',
+  PAYMENT_MODE_CHANGED: 'PAYMENT_MODE_CHANGED',
 } as const;
 
 export type TxnReason = (typeof TXN_REASON)[keyof typeof TXN_REASON];
@@ -126,6 +132,9 @@ export const transaction = (
 
 /** Platform settings BMS can change at runtime. One item, one row. */
 export const pricingConfig = (): TableKey => ({ PK: 'CONFIG#PRICING', SK: 'METADATA' });
+
+/** Which Razorpay credentials the billing integration uses. */
+export const paymentConfig = (): TableKey => ({ PK: 'CONFIG#PAYMENT', SK: 'METADATA' });
 
 export const statsGlobal = (day: string): TableKey => ({ PK: 'STATS#GLOBAL', SK: `DAY#${day}` });
 

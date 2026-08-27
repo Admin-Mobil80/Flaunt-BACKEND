@@ -92,3 +92,37 @@ export function formatMinor(minor: number, symbol: string): string {
   const abs = Math.abs(minor);
   return `${sign}${symbol}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, '0')}`;
 }
+
+
+/**
+ * Which Razorpay credentials the billing integration uses.
+ *
+ * The two modes are entirely separate Razorpay environments with their own
+ * key pairs and their own webhook signing secrets — a test order cannot be
+ * settled with live keys, and a live webhook will not verify against a test
+ * secret. So switching mode has to switch the whole credential set together,
+ * which is why this names a secret rather than a flag.
+ */
+export const PAYMENT_MODES = ['test', 'live'] as const;
+export type PaymentMode = (typeof PAYMENT_MODES)[number];
+
+export const DEFAULT_PAYMENT_MODE: PaymentMode = 'test';
+
+export function isPaymentMode(v: unknown): v is PaymentMode {
+  return typeof v === 'string' && (PAYMENT_MODES as readonly string[]).includes(v);
+}
+
+/**
+ * Anything unrecognised resolves to test. A corrupted or missing setting must
+ * never fall through to charging real cards — the safe default is the one that
+ * cannot take money.
+ */
+export function coercePaymentMode(v: unknown): PaymentMode {
+  return isPaymentMode(v) ? v : DEFAULT_PAYMENT_MODE;
+}
+
+/** Razorpay credentials are shared with CloudMeter; test and live live apart. */
+export const RAZORPAY_SECRET_BY_MODE: Record<PaymentMode, string> = {
+  test: 'cloudmeter/razorpay_dev',
+  live: 'cloudmeter/razorpay_prod',
+};

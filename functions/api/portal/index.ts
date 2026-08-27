@@ -496,6 +496,91 @@ async function declineInvitation(userId: string, inviteId: string) {
   return shapeInvite({ ...inv, status, expiresAt: null });
 }
 
+/**
+ * Withdraws an invitation the caller sent, while it is still open, and returns
+ * their token.
+ *
+ * Authorization is the mirror of accept: there the caller must be the
+ * recipient, here they must be the SENDER. It reuses the same exactly-once
+ * refund marker, so an invitation cannot be cancelled and then also refunded by
+ * expiry, and expiresAt is removed so TTL has nothing left to act on.
+ */
+async function cancelInvitation(userId: string, inviteId: string) {
+  const { Item: inv } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.invite(inviteId) }));
+  if (!inv) throw new Error('That invitation no longer exists.');
+  if (inv.senderId !== userId) throw new Error('You can only cancel invitations you sent.');
+  if (inv.status === k.INVITE_STATUS.CANCELLED) return shapeInvite(inv);
+  if (!OPEN_STATUSES.includes(inv.status)) {
+    throw new Error(`That invitation was already ${String(inv.status).toLowerCase()} and cannot be cancelled.`);
+  }
+
+  const now = new Date().toISOString();
+  const status = k.INVITE_STATUS.CANCELLED;
+
+  try {
+    await ddb.send(new TransactWriteCommand({
+      TransactItems: [
+        {
+          Put: {
+            TableName: TABLE_NAME,
+            Item: { ...k.inviteRefundMarker(inviteId), entityType: 'INVITE_REFUND', refundedAt: now, reason: 'CANCELLED' },
+            ConditionExpression: 'attribute_not_exists(PK)',
+          },
+        },
+        {
+          Update: {
+            TableName: TABLE_NAME,
+            Key: k.invite(inviteId),
+            UpdateExpression: 'SET #s = :s, GSI2SK = :g2, GSI3PK = :g3pk, GSI3SK = :g3sk REMOVE expiresAt',
+            ConditionExpression: 'attribute_exists(PK) AND #s = :prev',
+            ExpressionAttributeNames: { '#s': 'status' },
+            ExpressionAttributeValues: {
+              ':s': status, ':prev': inv.status,
+              ':g2': `${status}#${inv.createdAt}`,
+              ':g3pk': `INVITE_STATUS#${status}`,
+              ':g3sk': `${inv.createdAt}#${inviteId}`,
+            },
+          },
+        },
+        {
+          Update: {
+            TableName: TABLE_NAME,
+            Key: k.user(userId),
+            UpdateExpression: 'ADD tokenBalance :one',
+            ConditionExpression: 'attribute_exists(PK)',
+            ExpressionAttributeValues: { ':one': 1 },
+          },
+        },
+        {
+          Put: {
+            TableName: TABLE_NAME,
+            Item: {
+              ...k.transaction(userId, now),
+              entityType: 'TXN', delta: 1, reason: k.TXN_REASON.REFUND_CANCELLED,
+              relatedId: inviteId, actorId: userId, createdAt: now,
+            },
+          },
+        },
+        {
+          Update: {
+            TableName: TABLE_NAME,
+            Key: k.statsGlobal(now.slice(0, 10)),
+            UpdateExpression: 'ADD invitesCancelled :one, tokensRefunded :one',
+            ExpressionAttributeValues: { ':one': 1 },
+          },
+        },
+      ],
+    }));
+  } catch (err: any) {
+    if (err?.name === 'TransactionCanceledException') {
+      throw new Error('That invitation has already been resolved.');
+    }
+    throw err;
+  }
+
+  return shapeInvite({ ...inv, status, expiresAt: null });
+}
+
 export const handler = async (event: AppSyncResolverEvent<any>) => {
   const field = (event as any).info?.fieldName;
   const userId = callerId(event);
@@ -509,6 +594,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'invitation': return invitation(userId, args.inviteId);
     case 'acceptInvitation': return acceptInvitation(userId, args.inviteId);
     case 'declineInvitation': return declineInvitation(userId, args.inviteId);
+    case 'cancelInvitation': return cancelInvitation(userId, args.inviteId);
     case 'sendInvitation': return sendInvitation(userId, args.email);
     case 'updateProfile': return updateProfile(userId, args);
     // Name search needs the GSI3 NAME# namespace and the degree walk; until
