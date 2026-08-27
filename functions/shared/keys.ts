@@ -196,6 +196,43 @@ export function inviteExpiryEpochSeconds(from: Date = new Date()): number {
  * rather than at it, so the row still existing does not mean the invite is live —
  * every accept path must call this regardless of whether the item was found.
  */
+/**
+ * Masks an email for a 2nd-degree viewer (PRD §3.2): riyad@mobil80.com becomes
+ * riy**@mo******.com.
+ *
+ * The star runs are FIXED WIDTH — always two after the local part, always six
+ * after the domain — rather than one star per hidden character.
+ *
+ * That is deliberate, and it is why this matches the PRD's example exactly
+ * where a length-preserving version does not: "mobil80" is seven characters, so
+ * preserving length would print five stars after "mo", not the six the spec
+ * shows. Following the spec's literal string turns out to be the better rule
+ * anyway — a mask whose width tracks the hidden text tells a viewer how long
+ * the address is, which is information they were not meant to have and which
+ * meaningfully narrows a guess.
+ *
+ * Short parts keep no more than half their characters, so a two-letter local
+ * part is not published whole by a rule written for longer ones.
+ */
+const LOCAL_STARS = 2;
+const HOST_STARS = 6;
+
+export function maskEmail(email: string): string {
+  const raw = String(email ?? '').trim();
+  const at = raw.lastIndexOf('@');
+  if (at <= 0) return '***';
+  const local = raw.slice(0, at);
+  const domain = raw.slice(at + 1);
+  const dot = domain.lastIndexOf('.');
+  if (dot <= 0) return '***';
+  const host = domain.slice(0, dot);
+  const tld = domain.slice(dot);
+  if (!host) return '***';
+
+  const keep = (v: string, n: number) => v.slice(0, Math.max(1, Math.min(n, Math.ceil(v.length / 2))));
+  return `${keep(local, 3)}${'*'.repeat(LOCAL_STARS)}@${keep(host, 2)}${'*'.repeat(HOST_STARS)}${tld}`;
+}
+
 export function isExpired(expiresAtEpochSeconds: number, now: Date = new Date()): boolean {
   return Math.floor(now.getTime() / 1000) > Number(expiresAtEpochSeconds);
 }

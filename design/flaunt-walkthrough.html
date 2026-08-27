@@ -1051,7 +1051,13 @@ async function saveProfile() {
     // Hold the submitted values so a validation failure does not also wipe the
     // form the user is being asked to correct.
     S.profileDraft = payload;
-  } finally { S.saving = false; render(); }
+  } finally {
+    S.saving = false; render();
+    // The Save button sits at the bottom of a long form and the error renders
+    // at the top, so without this the page appears to do nothing at all.
+    const err = document.getElementById('pf-error');
+    if (err) err.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
 }
 
 function vProfileEdit() {
@@ -1068,7 +1074,7 @@ function vProfileEdit() {
       <h1 class="big">Your profile</h1>
       <p style="margin:0;font-size:14px;color:var(--ink-soft);">This is what your connections see. Your email and country are fixed &mdash; country decides how you are billed.</p>
     </div>
-    ${S.profileError ? `<div role="alert" style="border:1px solid #E0C3C3;background:#FBF0F0;padding:11px 13px;font-size:12.5px;color:var(--bad);">${esc(S.profileError)}</div>` : ''}
+    ${S.profileError ? `<div id="pf-error" role="alert" style="border:1px solid #E0C3C3;background:#FBF0F0;padding:12px 14px;font-size:13px;color:var(--bad);">${esc(S.profileError)}</div>` : ''}
 
     <div style="display:flex;flex-direction:column;gap:7px;">
       <span class="lbl">Email</span>
@@ -1091,11 +1097,12 @@ function vProfileEdit() {
       <input class="field" id="pf-location" maxlength="80" ${d} value="${esc(m.location || '')}">
     </div>
     <div style="display:flex;flex-direction:column;gap:7px;">
-      <label class="lbl" for="pf-bio">Professional description</label>
+      <div style="display:flex;justify-content:space-between;"><label class="lbl" for="pf-bio">Professional description</label><span class="lbl" style="color:var(--warn);">Required</span></div>
       <textarea class="field" id="pf-bio" ${d} oninput="paintProfileCount()"
         style="height:170px;resize:vertical;font-size:13.5px;line-height:1.62;">${esc(m.bio || '')}</textarea>
       <span class="mono" id="pf-count" style="font-size:12px;color:var(--ink-soft);align-self:flex-end;">${words} / 300 words</span>
     </div>
+    ${S.profileError ? `<div role="alert" style="border-left:2px solid var(--bad);padding-left:12px;font-size:12.5px;color:var(--bad);">${esc(S.profileError)}</div>` : ''}
     <div style="display:flex;align-items:center;gap:16px;">
       <button class="btn" ${d} onclick="saveProfile()">${S.saving ? 'Saving…' : 'Save changes'}</button>
       <button ${d} onclick="S.profileDraft=null;S.profileError=null;go('#/network');" style="background:none;border:none;font-size:13px;color:var(--ink-soft);">Cancel</button>
@@ -1488,7 +1495,7 @@ function vPortalAuth() {
         <span style="font-size:12px;color:var(--faint);">Sets how you are billed for tokens.</span>
       </div>
       <div style="display:flex;flex-direction:column;gap:7px;">
-        <label class="lbl" for="su-bio">Professional description</label>
+        <div style="display:flex;justify-content:space-between;"><label class="lbl" for="su-bio">Professional description</label><span class="lbl" style="color:var(--warn);">Required</span></div>
         <textarea class="field" id="su-bio" maxlength="2048" ${d} style="height:120px;resize:vertical;font-size:13.5px;line-height:1.6;"></textarea>
       </div>
       <div style="display:flex;align-items:center;gap:16px;">
@@ -1648,6 +1655,13 @@ function render() {
   document.getElementById('app').innerHTML = view();
   document.getElementById('layer').innerHTML = modalHtml() + versionTip()
     + (S.toast ? `<div class="toast">${esc(S.toast)}</div>` : '');
+
+  // Focus the one field the user is obviously here to fill. render() replaces
+  // the DOM wholesale, so the HTML autofocus attribute never fires on a
+  // re-render — the focus has to be reapplied each time. Guarded so it does not
+  // steal the caret back while they are mid-type.
+  const code = document.getElementById('auth-code');
+  if (code && document.activeElement !== code) code.focus();
 }
 addEventListener('hashchange', render);
 watchForNewVersion();

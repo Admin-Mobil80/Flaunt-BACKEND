@@ -282,3 +282,51 @@ describe('payment mode (test vs live Razorpay)', () => {
     expect(isPaymentMode('sandbox')).toBe(false);
   });
 });
+
+import { maskEmail } from '../functions/shared/keys';
+
+describe('email masking for 2nd-degree viewers (§3.2)', () => {
+  // The exact string the PRD specifies.
+  test('produces the documented format', () => {
+    expect(maskEmail('riyad@mobil80.com')).toBe('riy**@mo******.com');
+  });
+
+  // The star runs are fixed, so the mask does not count out the hidden
+  // characters for the viewer.
+  test('star runs are the same width whatever they hide', () => {
+    for (const e of ['abc@defg.com', 'abcdefghijklmnop@defghijklmnopqrs.com', 'riyad@mobil80.com']) {
+      const m = maskEmail(e);
+      expect(m.split('@')[0]).toMatch(/\*{2}$/);
+      expect(m.split('@')[0]).not.toMatch(/\*{3}/);
+      expect(m.split('@')[1]).toMatch(/\*{6}\./);
+      expect(m.split('@')[1]).not.toMatch(/\*{7}/);
+    }
+  });
+
+  // Two goals collide on very short inputs: a constant kept-prefix, and never
+  // publishing more than half of a short part. The second wins, so the visible
+  // prefix shortens for tiny values. That reveals only that the part is short,
+  // which is far less than showing it whole.
+  test('the kept prefix shrinks for short parts rather than exposing them', () => {
+    expect(maskEmail('abc@defg.com').split('@')[0]).toBe('ab**');
+    expect(maskEmail('abcdefghijklmnop@defg.com').split('@')[0]).toBe('abc**');
+  });
+
+  // A rule that always keeps 3 characters would publish a 2-character local part whole.
+  test('never reveals more than half of a short part', () => {
+    expect(maskEmail('ab@cd.com')).toBe('a**@c******.com');
+  });
+
+  test('the real address never survives masking', () => {
+    for (const e of ['riyad@mobil80.com', 'someone@example.org', 'a.b@c.d.co.uk']) {
+      expect(maskEmail(e)).not.toBe(e);
+      expect(maskEmail(e)).toContain('*');
+    }
+  });
+
+  test('malformed input yields no information rather than throwing', () => {
+    expect(maskEmail('not-an-email')).toBe('***');
+    expect(maskEmail('')).toBe('***');
+    expect(maskEmail('@nolocal.com')).toBe('***');
+  });
+});
