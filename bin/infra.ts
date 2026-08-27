@@ -6,6 +6,7 @@ import { FrontendStack } from '../lib/frontend-stack';
 import { AuthStack } from '../lib/auth-stack';
 import { BmsAuthStack } from '../lib/bms-auth-stack';
 import { ApiStack } from '../lib/api-stack';
+import { InvitesStack } from '../lib/invites-stack';
 import { CiDeployStack } from '../lib/ci-deploy-stack';
 import { EnvName } from '../lib/env-config';
 
@@ -61,6 +62,14 @@ stacks.push(dataStack);
 // The apex serves the app directly rather than bouncing to www: someone typing
 // the short name is the commonest arrival there is, and a redirect costs them a
 // round trip to reach the same page. One distribution, one cache, one deploy.
+stacks.push(new InvitesStack(app, 'FlauntInvitesStackProd', {
+  env,
+  envName,
+  table: dataStack.table,
+  otpFromEmail: OTP_FROM_EMAIL,
+  portalUrl: `https://${PORTAL_DOMAIN}`,
+}));
+
 const portalStack = new FrontendStack(app, 'FlauntFrontendStackPortalProd', {
   env,
   envName,
@@ -96,6 +105,8 @@ stacks.push(new ApiStack(app, 'FlauntApiStackProd', {
   userPool: authStack.userPool,
   bmsUserPool: bmsAuthStack.userPool,
   rootAdminEmail: ROOT_ADMIN_EMAIL,
+  otpFromEmail: OTP_FROM_EMAIL,
+  portalUrl: `https://${PORTAL_DOMAIN}`,
 }));
 
 

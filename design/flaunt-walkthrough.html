@@ -44,21 +44,6 @@ button { font:inherit; color:inherit; cursor:pointer; }
 .mono { font-family:var(--mono); font-variant-numeric:tabular-nums; }
 .lbl { font-size:10px; letter-spacing:.15em; text-transform:uppercase; color:var(--faint); font-weight:500; }
 
-/* ---- prototype scaffolding (not part of the product) ---- */
-#bar {
-  position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:14px;
-  flex-wrap:wrap; padding:8px 18px; background:var(--ink); color:#E9E3DA;
-}
-#bar .tag { font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; color:#9C9285;
-  border:1px solid #4A4239; padding:2px 7px; }
-#bar nav { display:flex; gap:4px; flex-wrap:wrap; }
-#bar button {
-  background:none; border:1px solid transparent; color:#B8AFA2;
-  font-size:11.5px; padding:4px 9px;
-}
-#bar button:hover { color:#F3EDE4; }
-#bar button[aria-current="true"] { background:#3A322A; color:#FBF9F5; border-color:#544A40; }
-
 /* ---- app chrome ---- */
 .top {
   display:flex; align-items:center; justify-content:space-between; gap:16px;
@@ -147,10 +132,7 @@ tbody td { border-bottom:1px solid #EDF0F2; padding:9px 16px; vertical-align:mid
   .bms-nav .lbl { display:none; } .stats { grid-template-columns:repeat(2,minmax(0,1fr)); } }
 </style>
 
-<div id="bar">
-  <span class="tag">PROTOTYPE</span>
-  <nav id="barnav"></nav>
-</div>
+<div id="notice"></div>
 <div id="app"></div>
 <div id="layer"></div>
 
@@ -242,19 +224,6 @@ function reset() {
 }
 reset();
 
-const SCREENS = [
-  {h:'#/signup',   t:'Sign up'},
-  {h:'#/welcome',  t:'Welcome'},
-  {h:'#/network',  t:'Network'},
-  {h:'#/p/priya',  t:'1st degree'},
-  {h:'#/p/riyad',  t:'2nd degree'},
-  {h:'#/invitations', t:'Invitations'},
-  {h:'#/gatekeeper',  t:'Gatekeeper'},
-  {h:'#/tokens',   t:'Buy tokens'},
-  {h:'#/bms/users', t:'BMS · Ledger'},
-  {h:'#/bms/invitations', t:'BMS · Invites'},
-  {h:'#/bms/webhooks', t:'BMS · Webhooks'}
-];
 
 function toast(msg) {
   S.toast = msg; render();
@@ -280,8 +249,8 @@ function topbar(active) {
         <span class="lbl">tokens</span>
       </button>
       <span class="avatar" style="width:34px;height:34px;font-size:14px;">${S.me ? initialsOf(S.me.name) : '·'}</span>
-      ${APP === 'portal' ? `<button onclick="signOut()" title="${esc((session() && session().email) || '')}"
-        style="background:none;border:1px solid var(--rule-2);color:var(--ink-soft);font-size:11.5px;padding:4px 10px;">Sign out</button>` : ''}
+      ${APP === 'portal' ? `<button onclick="signOut()" title="Signed in as ${esc((session() && session().email) || '')}"
+        style="background:none;border:1px solid var(--rule-2);color:var(--ink-2);font-size:12.5px;padding:7px 13px;">Sign out</button>` : ''}
     </div>
   </header>`;
 }
@@ -711,10 +680,11 @@ function bmsShell(active, inner) {
         <span style="font-size:13px;font-weight:600;letter-spacing:.02em;">Flaunt BMS</span>
         <span class="mono" style="font-size:10px;letter-spacing:.08em;border:1px solid #4A5260;color:#9BA5B2;padding:2px 7px;">PRODUCTION</span>
       </div>
-      <div style="display:flex;align-items:center;gap:14px;">
-        <span class="mono" style="font-size:11.5px;color:#9BA5B2;">${(session() && session().email) || 'riyad@mobil80.com'}</span>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="mono" style="font-size:11.5px;color:#C3CBD4;">${(session() && session().email) || ''}</span>
         <span class="mono" style="font-size:10px;letter-spacing:.08em;background:var(--bms-accent);color:#DCE6F2;padding:2px 7px;">ROOT</span>
-        ${APP === 'bms' ? `<button onclick="signOut()" style="background:none;border:1px solid #4A5260;color:#9BA5B2;font-size:11px;padding:2px 9px;">Sign out</button>` : ''}
+        <button onclick="signOut()" style="background:#2A3038;border:1px solid #5A6472;color:#E8EBEE;
+          font-size:12px;font-weight:500;padding:5px 12px;">Sign out</button>
       </div>
     </header>
     <div class="bms-body">
@@ -866,10 +836,7 @@ async function sendInvite() {
     S.modal = null; S.invFilter = 'all';
     await refreshPortal();
     go('#/invitations');
-    // Deliberately explicit. The token is spent and the invitation recorded,
-    // but nothing reached the recipient — the invitation email is not built
-    // yet. Saying "sent" here would be a claim the user cannot check.
-    toast('Invitation recorded — 1 token held. Email delivery is not live yet, so ' + email + ' has not been notified.');
+    toast('Invitation sent to ' + email + ' — 1 token held. It comes back if they decline or do not respond in 7 days.');
   } catch (e) {
     toast(e.message || 'Could not send the invitation.');
   } finally {
@@ -1339,14 +1306,21 @@ function view() {
   if (h.startsWith('#/p/')) return vProfile(h.slice(4));
   return APP === 'bms' ? vBmsUsers() : vNetwork();
 }
-function screensForApp() {
-  if (APP === 'portal') return SCREENS.filter((s) => s.h.indexOf('#/bms/') !== 0);
-  if (APP === 'bms') return SCREENS.filter((s) => s.h.indexOf('#/bms/') === 0);
-  return SCREENS;
-}
 function homeForApp() { return APP === 'bms' ? '#/bms/users' : '#/network'; }
 
+function renderNotice() {
+  const el = document.getElementById('notice');
+  if (!el) return;
+  const bms = APP === 'bms';
+  el.innerHTML = `<div style="background:${bms ? '#20262E' : '#2A2018'};color:${bms ? '#AEB8C4' : '#C9BCA8'};
+      font-size:11.5px;letter-spacing:.02em;padding:7px 18px;text-align:center;">
+    ${bms ? 'Preview — sample data remains on the webhooks page.'
+          : 'Preview — payments are not connected yet.'}
+  </div>`;
+}
+
 function render() {
+  renderNotice();
   // Nothing truthful can be rendered until the first load returns.
   if (APP === 'portal' && signedIn() && !S.me && !S.dataError && !S.loading) loadPortal();
   if (APP === 'bms' && signedIn() && !S.stats && !S.dataError && !S.loading) loadBms();
@@ -1356,11 +1330,6 @@ function render() {
   let h = location.hash || homeForApp();
   const isBms = h.indexOf('#/bms/') === 0;
   if ((APP === 'portal' && isBms) || (APP === 'bms' && !isBms)) { h = homeForApp(); location.hash = h; }
-  const gated = APP !== 'both' && !signedIn();
-  document.getElementById('bar').style.display = gated ? 'none' : '';
-  document.getElementById('barnav').innerHTML = gated ? '' :
-    screensForApp().map((s) => `<button onclick="go('${s.h}')" ${h===s.h?'aria-current="true"':''}>${s.t}</button>`).join('')
-    + `<button onclick="reset();render();" title="Reset the walkthrough" style="margin-left:8px;color:#8C8377;">Reset</button>`;
   document.getElementById('app').innerHTML = view();
   document.getElementById('layer').innerHTML = modalHtml() + versionTip()
     + (S.toast ? `<div class="toast">${esc(S.toast)}</div>` : '');

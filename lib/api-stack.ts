@@ -6,11 +6,14 @@ import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNode from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
+import * as iam from 'aws-cdk-lib/aws-iam';
 import * as path from 'path';
 import { EnvProps, suffix } from './env-config';
 
 export interface ApiStackProps extends StackProps, EnvProps {
   table: dynamodb.Table;
+  otpFromEmail: string;
+  portalUrl: string;
   userPool: cognito.UserPool;
   bmsUserPool: cognito.UserPool;
   rootAdminEmail: string;
@@ -33,7 +36,7 @@ export class ApiStack extends Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
-    const { table, userPool, bmsUserPool, rootAdminEmail, envName } = props;
+    const { table, userPool, bmsUserPool, rootAdminEmail, otpFromEmail, portalUrl, envName } = props;
     const sfx = suffix(envName);
 
     this.api = new appsync.GraphqlApi(this, 'FlauntGraphqlApi', {
@@ -72,9 +75,18 @@ export class ApiStack extends Stack {
       functionName: `flaunt-api-portal${sfx}`,
       logGroup: logGroupFor('portal'),
       entry: path.join(__dirname, '../functions/api/portal/index.ts'),
-      environment: { TABLE_NAME: table.tableName },
+      environment: {
+        TABLE_NAME: table.tableName,
+        OTP_FROM_EMAIL: otpFromEmail,
+        PORTAL_URL: portalUrl,
+      },
     });
     table.grantReadWriteData(portalFn);
+    // Sending an invitation emails the recipient.
+    portalFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+      resources: ['*'],
+    }));
 
     const adminFn = new lambdaNode.NodejsFunction(this, 'AdminApiFn', {
       ...common,

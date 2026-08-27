@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import { priceForCountry, formatMinor, coerceBundleSize } from '../../shared/pricing';
 import * as k from '../../shared/keys';
+import { send, invitationEmail } from '../../shared/email';
 
 const INVITE_COST = 1;
 
@@ -203,6 +204,22 @@ async function sendInvitation(userId: string, rawEmail: string) {
       throw new Error('You do not have enough tokens to send an invitation.');
     }
     throw err;
+  }
+
+  // Sent after the transaction commits, never inside it. If delivery fails the
+  // token stays spent and the invitation stands — the recipient can still be
+  // reached, and the 7-day expiry will return the token if nothing comes of it.
+  // Failing the mutation here would be worse: the caller would retry and spend
+  // a second token on an invitation that already exists.
+  const senderLine = [profile.designation, profile.organisation].filter(Boolean).join(', ')
+    || 'They are on Flaunt.';
+  const delivered = await send(invitationEmail({
+    to: recipientEmail,
+    senderName: profile.name,
+    senderLine: `${profile.name}${senderLine ? ' — ' + senderLine : ''}`,
+  }));
+  if (!delivered) {
+    console.error(JSON.stringify({ msg: 'invitation created but email failed', inviteId, recipientEmail }));
   }
 
   return shapeInvite({ inviteId, recipientEmail, status, type: 'DIRECT', createdAt, expiresAt });
