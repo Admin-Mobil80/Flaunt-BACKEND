@@ -2853,17 +2853,28 @@ function vPortalLoading() {
     </div></div>`;
 }
 
+/**
+ * The bar exists to warn, so it appears only when there is a warning.
+ *
+ * It used to say "Preview — payments run in Razorpay test mode" whenever
+ * payMode was not 'live', which included every signed-out visitor: they never
+ * load payment config, so the landing page of a launched product told everyone
+ * it was a preview. Silence is the correct state now, and the bar returns only
+ * for a signed-in member while billing is genuinely in test mode — where the
+ * warning is true and worth making.
+ */
 function renderNotice() {
   const el = document.getElementById('notice');
   if (!el) return;
   const bms = APP === 'bms';
+  const message = bms
+    ? (S.payment && S.payment.mode === 'test'
+        ? 'Billing is in test mode — no real cards are charged.' : '')
+    : (S.me && S.payMode === 'test'
+        ? 'Payments are in test mode — no real cards are charged.' : '');
+  if (!message) { el.innerHTML = ''; return; }
   el.innerHTML = `<div style="background:${bms ? '#20262E' : '#2A2018'};color:${bms ? '#AEB8C4' : '#C9BCA8'};
-      font-size:11.5px;letter-spacing:.02em;padding:7px 18px;text-align:center;">
-    ${bms ? 'Preview — daily digests are not built yet.'
-          : (S.payMode === 'live'
-              ? 'Live payments are enabled — real cards will be charged.'
-              : 'Preview — payments run in Razorpay test mode.')}
-  </div>`;
+      font-size:11.5px;letter-spacing:.02em;padding:7px 18px;text-align:center;">${message}</div>`;
 }
 
 function render() {

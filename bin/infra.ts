@@ -124,6 +124,7 @@ const bmsStack = new FrontendStack(app, 'FlauntFrontendStackBmsProd', {
   crossRegionReferences: true,
   certificate: certStack.certificate,
   siteName: 'bms',
+  noindex: true,
   domainName: BMS_DOMAIN,
 });
 stacks.push(bmsStack);

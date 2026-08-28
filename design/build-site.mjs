@@ -137,9 +137,11 @@ const TAB = {
   },
 };
 
+// The portal is live: it has real members, real invitations and real money,
+// so it says nothing. The console keeps a quiet standing note.
 const NOTICE = {
-  portal: 'PREVIEW — design prototype. No accounts, no payments, nothing is saved.',
-  bms: 'PREVIEW — design prototype. Sample data only; these are not real users.',
+  portal: '',
+  bms: 'Staff console — every action here is on live member data.',
 };
 
 const src = await readFile(SRC, 'utf8');
@@ -163,13 +165,15 @@ for (const app of ['portal', 'bms']) {
     .replaceAll('__OG_TITLE__', TAB[app].ogTitle)
     .replaceAll('__SITE_URL__', TAB[app].url);
 
-  // Search engines must not index a service that cannot yet accept anyone.
-  // The CloudFront response-headers policy sets X-Robots-Tag too; this is the
-  // copy that survives if the file is ever served from somewhere else.
-  out = out.replace(
-    '<meta name="viewport"',
-    '<meta name="robots" content="noindex, nofollow">\n<meta name="viewport"'
-  );
+  // The console must never be indexed. The portal is a live public service and
+  // is meant to be found — it carried noindex only while it could not accept
+  // anyone. CloudFront sets X-Robots-Tag to match.
+  if (app === 'bms') {
+    out = out.replace(
+      '<meta name="viewport"',
+      '<meta name="robots" content="noindex, nofollow">\n<meta name="viewport"'
+    );
+  }
 
   // The bar is prototype scaffolding either way, but on a public hostname it
   // has to say plainly what this is — a visitor did not arrive knowing.

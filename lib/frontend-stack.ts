@@ -17,6 +17,8 @@ export interface FrontendStackProps extends StackProps, EnvProps {
   domainName: string;
   /** Additional hostnames on the same distribution (e.g. www beside the apex). */
   extraDomainNames?: string[];
+  /** Keep the site out of search results. True for the staff console only. */
+  noindex?: boolean;
 }
 
 /**
@@ -38,7 +40,7 @@ export class FrontendStack extends Stack {
     super(scope, id, props);
 
     const {
-      envName, certificate, siteName, domainName, extraDomainNames = [],
+      envName, certificate, siteName, domainName, extraDomainNames = [], noindex = false,
     } = props;
 
     // S3 bucket names cannot contain underscores and must be globally unique,
@@ -56,11 +58,17 @@ export class FrontendStack extends Stack {
     // the backend cannot keep.
     const headers = new cloudfront.ResponseHeadersPolicy(this, 'HeadersPolicy', {
       responseHeadersPolicyName: `flaunt-${siteName}-headers${s3Suffix(envName)}`,
-      customHeadersBehavior: {
-        customHeaders: [
-          { header: 'X-Robots-Tag', value: 'noindex, nofollow', override: true },
-        ],
-      },
+      // The console is never indexed. The portal is a live public service and is
+      // meant to be found; it carried this only while it could not accept anyone,
+      // and the header overrides the page's own meta tag, so leaving it here
+      // would keep the site invisible however the page was built.
+      ...(noindex ? {
+        customHeadersBehavior: {
+          customHeaders: [
+            { header: 'X-Robots-Tag', value: 'noindex, nofollow', override: true },
+          ],
+        },
+      } : {}),
       securityHeadersBehavior: {
         contentTypeOptions: { override: true },
         frameOptions: { frameOption: cloudfront.HeadersFrameOption.SAMEORIGIN, override: true },
