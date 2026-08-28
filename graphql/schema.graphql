@@ -13,6 +13,13 @@
 # caller's email against verified claims. Being authenticated is not being an
 # admin.
 
+# One person who could make an introduction. There is often more than one.
+type IntroPath {
+  userId: ID!
+  name: String!
+  designation: String
+}
+
 type Profile {
   userId: ID!
   name: String!
@@ -27,9 +34,12 @@ type Profile {
   connectedAt: String
   # 1 = direct, 2 = through a mutual connection, null = not visible.
   degree: Int
-  # Who could introduce you, when degree is 2.
+  # The first available introducer, kept for lists that show only one.
   viaName: String
   viaUserId: ID
+  # EVERY mutual connection who could introduce you. A second-degree contact is
+  # often reachable through several of your own, and which one you ask matters.
+  viaOptions: [IntroPath!]!
   # True when a second address is on file but not yet proved.
   secondaryEmailUnverified: Boolean
 }
@@ -176,7 +186,7 @@ type Query {
   connectionsOf(userId: ID!): [Profile!]!
   searchPeople(query: String!): [Profile!]!
 
-  adminUsers(limit: Int): [AdminUser!]! @aws_cognito_user_pools
+  adminUsers(limit: Int, offset: Int): [AdminUser!]! @aws_cognito_user_pools
   adminStats: AdminStats! @aws_cognito_user_pools
   adminInvitations(status: String): [Invitation!]! @aws_cognito_user_pools
   adminPricingConfig: PricingConfig! @aws_cognito_user_pools

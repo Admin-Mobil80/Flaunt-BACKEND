@@ -634,7 +634,8 @@ async function profile(callerId: string, targetId: string) {
 
   if (callerId === targetId) {
     return { ...base, location: target.location ?? null, primaryEmail: target.primaryEmail,
-      secondaryEmail: target.secondaryEmail ?? null, degree: 0, viaName: null, connectedAt: null };
+      secondaryEmail: target.secondaryEmail ?? null, degree: 0, viaName: null, viaUserId: null,
+      viaOptions: [], connectedAt: null };
   }
 
   const { Item: direct } = await ddb.send(new GetCommand({
@@ -644,15 +645,33 @@ async function profile(callerId: string, targetId: string) {
     return { ...base, location: target.location ?? null, primaryEmail: target.primaryEmail,
       secondaryEmail: target.secondaryEmail ?? null,
       secondaryEmailUnverified: Boolean(target.secondaryEmail),
-      degree: 1, viaName: null, connectedAt: direct.connectedAt ?? null };
+      degree: 1, viaName: null, viaUserId: null, viaOptions: [],
+      connectedAt: direct.connectedAt ?? null };
   }
 
   const [mine, theirs] = await Promise.all([connectionRows(callerId), connectionRows(targetId)]);
   const mineIds = new Set(mine.map((r: any) => r.otherUserId));
-  const mutualId = theirs.map((r: any) => r.otherUserId).find((id: string) => mineIds.has(id));
+  /**
+   * EVERY mutual connection, not the first one found.
+   *
+   * Who is asked is a real choice: one contact may know the target well and
+   * another barely, and the requester is the only one who can judge that.
+   * Returning a single arbitrary introducer quietly made that decision for them.
+   */
+  const mutualIds = theirs.map((r: any) => r.otherUserId).filter((id: string) => mineIds.has(id));
 
-  if (mutualId) {
-    const { Item: via } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(mutualId) }));
+  if (mutualIds.length > 0) {
+    const vias = await Promise.all(mutualIds.map((id: string) =>
+      ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(id) }))));
+    const viaOptions = mutualIds.map((id: string, i: number) => {
+      const v = vias[i].Item ?? {};
+      return {
+        userId: id,
+        name: v.name ?? 'Unknown',
+        designation: [v.designation, v.organisation].filter(Boolean).join(' · ') || null,
+      };
+    }).sort((a, b) => a.name.localeCompare(b.name));
+
     return {
       ...base,
       // Personal geography does not serve the "be found professionally" purpose
@@ -661,8 +680,9 @@ async function profile(callerId: string, targetId: string) {
       primaryEmail: k.maskEmail(target.primaryEmail),
       secondaryEmail: null,
       degree: 2,
-      viaName: via?.name ?? null,
-      viaUserId: mutualId,
+      viaName: viaOptions[0]?.name ?? null,
+      viaUserId: viaOptions[0]?.userId ?? null,
+      viaOptions,
       connectedAt: null,
     };
   }
@@ -746,6 +766,7 @@ async function connectionsOf(callerId: string, contactId: string) {
       degree: isDirect ? 1 : 2,
       viaName: isDirect ? null : contact.name,
       viaUserId: isDirect ? null : contactId,
+      viaOptions: [],
     };
   }).sort((x: any, y: any) => String(x.name).localeCompare(String(y.name)));
 }
@@ -832,6 +853,7 @@ async function secondDegree(userId: string, limit = 50, offset = 0) {
       degree: 2,
       viaName: viaName.get(found.get(id)!) ?? null,
       viaUserId: found.get(id) ?? null,
+      viaOptions: [],
     };
   }).sort((x, y) => String(x.name).localeCompare(String(y.name)));
 

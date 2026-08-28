@@ -29,72 +29,83 @@ function assertAdmin(event: any): string {
 }
 
 /**
- * The user directory lives in GSI3's USER_DIR# namespace, one partition per
- * country, so listing users is a handful of bounded queries rather than a table
- * scan that gets slower every day the product succeeds.
+ * Reads every profile once, projecting only the columns the admin views need.
+ *
+ * A Scan returns at most 1MB per call and then stops WITHOUT erroring, so this
+ * pages explicitly; the unpaginated version would quietly report on a subset and
+ * look perfectly healthy doing it.
  */
-async function directoryRows(limit: number) {
-  const { Items = [] } = await ddb.send(new ScanCommand({
-    TableName: TABLE_NAME,
-    IndexName: 'GSI3',
-    FilterExpression: 'begins_with(GSI3PK, :p)',
-    ExpressionAttributeValues: { ':p': 'USER_DIR#' },
-    Limit: Math.max(limit * 4, 100),
-  }));
-  return Items.slice(0, limit);
-}
-
-async function adminUsers(limit = 50) {
-  const rows = await directoryRows(limit);
-  const full = await Promise.all(rows.map(async (r: any) => {
-    const userId = String(r.PK).replace('USER#', '');
-    const [{ Item: p }, conns] = await Promise.all([
-      ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(userId) })),
-      ddb.send(new QueryCommand({
-        TableName: TABLE_NAME,
-        KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
-        ExpressionAttributeValues: { ':pk': `USER#${userId}`, ':sk': k.PREFIX.CONNECTION },
-        Select: 'COUNT',
-      })),
-    ]);
-    if (!p) return null;
-    return {
-      userId,
-      name: p.name,
-      email: p.primaryEmail,
-      country: p.country,
-      tokenBalance: p.tokenBalance ?? 0,
-      connectionCount: conns.Count ?? 0,
-      createdAt: p.createdAt,
-    };
-  }));
-  return full.filter(Boolean).sort((a: any, b: any) => b.createdAt.localeCompare(a.createdAt));
-}
-
-async function adminStats() {
-  const users = await adminUsers(500);
-  return {
-    totalUsers: users.length,
-    usersIndia: users.filter((u: any) => u.country === 'IN').length,
-    usersInternational: users.filter((u: any) => u.country !== 'IN').length,
-    tokensOutstanding: users.reduce((n: number, u: any) => n + (u.tokenBalance ?? 0), 0),
-  };
+async function allProfiles(): Promise<any[]> {
+  const items: any[] = [];
+  let ExclusiveStartKey: any = undefined;
+  do {
+    const r: any = await ddb.send(new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: 'entityType = :t',
+      ExpressionAttributeValues: { ':t': 'USER' },
+      ProjectionExpression: 'PK, #n, primaryEmail, country, tokenBalance, createdAt',
+      ExpressionAttributeNames: { '#n': 'name' },
+      ExclusiveStartKey,
+    }));
+    items.push(...(r.Items ?? []));
+    ExclusiveStartKey = r.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+  return items;
 }
 
 /**
- * Lists invitations by state.
+ * The user ledger, newest first.
  *
- * GSI3 carries an INCLUDE projection chosen for the columns the BMS tables
- * render, so it does NOT return inviteId, type or expiresAt — a projection
- * cannot be altered after the index is created, and fields added to the model
- * later do not appear in it retroactively. Only the base table's own key
- * attributes are guaranteed.
- *
- * So the index is used for what it is good at — finding the matching rows
- * cheaply — and the full items are then read from the base table. Deriving the
- * missing fields from the key strings would work today and break silently the
- * next time an attribute is added.
+ * This used to read each profile individually and then run a COUNT query per
+ * user — two round trips each. adminStats asked for five hundred of them, which
+ * is a thousand reads in one invocation: fine at ten accounts, a fifteen-second
+ * timeout at a thousand. Now it is one projected scan for the whole list, and
+ * connection counts are fetched only for the page actually being shown.
  */
+async function adminUsers(limit = 50, offset = 0) {
+  const all = await allProfiles();
+  all.sort((a: any, b: any) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
+  const page = all.slice(offset, offset + limit);
+
+  const counts = await Promise.all(page.map((u: any) =>
+    ddb.send(new QueryCommand({
+      TableName: TABLE_NAME,
+      KeyConditionExpression: 'PK = :pk AND begins_with(SK, :sk)',
+      ExpressionAttributeValues: { ':pk': u.PK, ':sk': k.PREFIX.CONNECTION },
+      Select: 'COUNT',
+    }))));
+
+  return page.map((u: any, i: number) => ({
+    userId: String(u.PK).replace('USER#', ''),
+    name: u.name ?? 'Unknown',
+    email: u.primaryEmail ?? '',
+    country: u.country ?? '',
+    tokenBalance: u.tokenBalance ?? 0,
+    connectionCount: counts[i].Count ?? 0,
+    createdAt: u.createdAt ?? '',
+  }));
+}
+
+/**
+ * Totals from the same single scan — no per-user reads at all. Counting
+ * accounts must not get slower as accounts are added, which is precisely what
+ * enumerating them did.
+ */
+async function adminStats() {
+  const all = await allProfiles();
+  let india = 0, tokens = 0;
+  for (const u of all as any[]) {
+    if (u.country === 'IN') india++;
+    tokens += Number(u.tokenBalance ?? 0);
+  }
+  return {
+    totalUsers: all.length,
+    usersIndia: india,
+    usersInternational: all.length - india,
+    tokensOutstanding: tokens,
+  };
+}
+
 async function adminInvitations(status?: string) {
   const statuses = status && status !== 'ALL' ? [status] : Object.values(k.INVITE_STATUS);
 
@@ -340,7 +351,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
   const args = (event.arguments ?? {}) as any;
 
   switch (field) {
-    case 'adminUsers': return adminUsers(args.limit ?? 50);
+    case 'adminUsers': return adminUsers(args.limit ?? 50, args.offset ?? 0);
     case 'adminStats': return adminStats();
     case 'adminInvitations': return adminInvitations(args.status);
     case 'adminPricingConfig': return adminPricingConfig();

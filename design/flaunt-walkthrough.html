@@ -525,7 +525,8 @@ async function openProfile(userId) {
   try {
     const d = await gql(`query P($id:ID!){ profile(userId:$id){
       userId name designation organisation location bio country
-      primaryEmail secondaryEmail secondaryEmailUnverified connectedAt degree viaName } }`, { id: userId });
+      primaryEmail secondaryEmail secondaryEmailUnverified connectedAt degree viaName viaUserId
+      viaOptions { userId name designation } } }`, { id: userId });
     S.viewing = { loading: false, userId, profile: d.profile, error: null, theirs: null, theirsLoading: false, tab: 'details' };
   } catch (e) {
     S.viewing = { loading: false, userId, profile: null, error: e.message };
@@ -657,18 +658,30 @@ function vProfile(id) {
 
     ${contact}
 
-    ${second && p.viaUserId ? `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:24px 26px;display:flex;flex-direction:column;gap:18px;">
-      <div style="display:flex;align-items:center;gap:11px;">
-        <span class="avatar" style="width:30px;height:30px;font-size:12px;">${initialsOf(p.viaName || '')}</span>
-        <span style="font-size:13.5px;color:var(--ink-2);">Connected through <strong style="font-weight:500;">${esc(p.viaName)}</strong></span>
+    ${second && (p.viaOptions || []).length ? `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:24px 26px;display:flex;flex-direction:column;gap:18px;">
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <span class="lbl">Request an introduction</span>
+        <span style="font-size:13.5px;color:var(--ink-2);">You and ${esc((p.name || '').split(' ')[0])} both know ${
+          p.viaOptions.length === 1 ? `<strong style="font-weight:500;">${esc(p.viaOptions[0].name)}</strong>`
+            : `<strong style="font-weight:500;">${p.viaOptions.length} people</strong>`}.</span>
+        ${p.viaOptions.length > 1 ? `<span style="font-size:12.5px;color:var(--ink-soft);">Ask whichever of them knows ${esc((p.name || '').split(' ')[0])} best &mdash; only the one you pick is contacted.</span>` : ''}
       </div>
-      <div style="display:flex;align-items:center;gap:20px;flex-wrap:wrap;">
-        <button class="btn" onclick="requestIntroduction('${p.userId}','${esc(p.name)}','${p.viaUserId}','${esc(p.viaName)}')">
-          <span style="display:flex;">${COIN}</span>Ask ${esc((p.viaName || '').split(' ')[0])} to introduce you &mdash; 1 token</button>
-        <span style="font-size:12.5px;color:var(--ink-soft);line-height:1.5;max-width:34ch;">${esc((p.viaName || '').split(' ')[0])} decides first. If they pass, or ${esc((p.name || '').split(' ')[0])} does not respond within 7 days, your token comes back.</span>
-      </div>
-    </div>` : ''}
 
+      <div style="display:flex;flex-direction:column;">
+        ${p.viaOptions.map((o) => `<div class="lrow" style="grid-template-columns:26px minmax(110px,1fr) auto;">
+          <span class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initialsOf(o.name)}</span>
+          <span style="display:flex;flex-direction:column;gap:1px;min-width:0;">
+            <span class="trunc" style="font-family:var(--serif);font-size:15px;">${esc(o.name)}</span>
+            ${o.designation ? `<span class="trunc" style="font-size:12px;color:var(--ink-soft);">${esc(o.designation)}</span>` : ''}
+          </span>
+          <button class="btn" style="padding:8px 14px;font-size:12.5px;"
+            onclick="requestIntroduction('${p.userId}','${esc(p.name)}','${o.userId}','${esc(o.name)}')">
+            <span style="display:flex;">${COIN}</span>Ask ${esc(o.name.split(' ')[0])}</button>
+        </div>`).join('')}
+      </div>
+
+      <span style="font-size:12.5px;color:var(--ink-soft);line-height:1.55;">One token, spent when you ask. It comes back if they pass, if ${esc((p.name || '').split(' ')[0])} declines, or if nobody responds within seven days.</span>
+    </div>` : ''}
     `}
 
     ${p.degree === 1 && (v.tab || 'details') === 'connections' ? `<div style="display:flex;flex-direction:column;gap:0;">
@@ -679,8 +692,7 @@ function vProfile(id) {
       ${v.theirs && v.theirs.length ? v.theirs.map((c) => {
         const crole = [c.designation, c.organisation].filter(Boolean).join(' · ');
         // The whole row opens the profile. Introducing is a decision worth a
-        // token, so it belongs on the page that shows who the person actually
-        // is — not as a button beside a name in a list.
+        // token, so it belongs on the page that shows who the person is.
         return `<div class="lrow lrow-click" onclick="S.viewing=null;go('#/p/${c.userId}')" role="link" tabindex="0"
             onkeydown="if(event.key==='Enter'){S.viewing=null;go('#/p/${c.userId}')}"
             style="grid-template-columns:26px minmax(110px,1fr) minmax(0,1.3fr) 110px 22px;">
@@ -692,7 +704,8 @@ function vProfile(id) {
             : `<span class="lbl" style="color:var(--warn);">2nd degree</span>`}</span>
           <span style="color:var(--ghost);display:flex;justify-content:flex-end;">${CHEV}</span>
         </div>`;
-      }).join('') : (v.theirs && v.theirs.length === 0 ? `<p style="margin:12px 0;font-size:13px;color:var(--faint);">They have no other connections yet.</p>` : '')}
+      }).join('') : (v.theirs && v.theirs.length === 0
+        ? `<p style="margin:14px 0;font-size:13px;color:var(--faint);">They have no other connections yet.</p>` : '')}
       ${v.theirsError ? `<p style="margin:12px 0;font-size:12.5px;color:var(--bad);">${esc(v.theirsError)}</p>` : ''}
     </div>` : ''}
 
@@ -846,9 +859,15 @@ function vTokens() {
 }
 
 
-const Q_ADMIN = `query Admin {
+const PAGE = 50;
+
+const Q_USERS = `query Users($o:Int!){
+  adminUsers(limit: ${PAGE}, offset: $o) { userId name email country tokenBalance connectionCount createdAt }
+}`;
+
+const Q_ADMIN = `query Admin($o:Int!) {
   adminStats { totalUsers usersIndia usersInternational tokensOutstanding }
-  adminUsers(limit: 50) { userId name email country tokenBalance connectionCount createdAt }
+  adminUsers(limit: ${PAGE}, offset: $o) { userId name email country tokenBalance connectionCount createdAt }
   adminInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome }
   adminPricingConfig { tokensPerBundle allowedSizes signupTokens signupRange updatedAt updatedBy }
   adminPaymentConfig { mode modes secretName live updatedAt updatedBy }
@@ -857,7 +876,7 @@ const Q_ADMIN = `query Admin {
 async function loadBms() {
   S.loading = true; S.dataError = null; render();
   try {
-    const d = await gql(Q_ADMIN);
+    const d = await gql(Q_ADMIN, { o: (S.userPage || 0) * PAGE });
     S.stats = d.adminStats;
     S.users = d.adminUsers || [];
     S.adminInvites = d.adminInvitations || [];
@@ -865,6 +884,24 @@ async function loadBms() {
     S.payment = d.adminPaymentConfig;
   } catch (e) { S.dataError = e.message; }
   finally { S.loading = false; render(); }
+}
+
+/**
+ * Paging refetches only the page. The stats, invitations and settings on this
+ * screen do not change when you move to row 51, and re-reading them would make
+ * every page turn as slow as a cold load.
+ */
+async function gotoUserPage(page) {
+  const total = (S.stats && S.stats.totalUsers) || 0;
+  const max = Math.max(0, Math.ceil(total / PAGE) - 1);
+  const next = Math.min(Math.max(0, page), max);
+  if (next === (S.userPage || 0)) return;
+  S.userPage = next; S.usersLoading = true; render();
+  try {
+    const d = await gql(Q_USERS, { o: next * PAGE });
+    S.users = d.adminUsers || [];
+  } catch (e) { toast(e.message); }
+  finally { S.usersLoading = false; render(); }
 }
 
 async function adjustTokens(userId, delta) {
@@ -949,6 +986,19 @@ function vBmsUsers() {
     </span></td></tr>`).join('');
 
 
+  const page = S.userPage || 0;
+  const pages = Math.max(1, Math.ceil((st.totalUsers || 0) / PAGE));
+  const from = st.totalUsers ? page * PAGE + 1 : 0;
+  const to = Math.min((page + 1) * PAGE, st.totalUsers || 0);
+  const pager = pages > 1 ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <span style="font-size:11.5px;color:var(--bms-mute);">Showing ${from}\u2013${to} of ${st.totalUsers}${S.usersLoading ? ' \u00b7 loading\u2026' : ''}</span>
+      <span style="display:flex;align-items:center;gap:8px;">
+        <button class="pill" onclick="gotoUserPage(${page - 1})"${page === 0 || S.usersLoading ? ' disabled' : ''}>Previous</button>
+        <span class="mono" style="font-size:11.5px;color:var(--bms-soft);">Page ${page + 1} of ${pages}</span>
+        <button class="pill" onclick="gotoUserPage(${page + 1})"${page >= pages - 1 || S.usersLoading ? ' disabled' : ''}>Next</button>
+      </span>
+    </div>` : '';
+
   return bmsShell('users', `
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <div style="display:flex;flex-direction:column;gap:3px;">
@@ -969,6 +1019,8 @@ function vBmsUsers() {
       <thead><tr><th>Name</th><th>Primary email</th><th>Country</th><th>Tokens</th><th>Connections</th><th>Joined</th><th>Adjust balance</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>` : `<div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:30px;font-size:13px;color:var(--bms-mute);">No accounts yet. The first sign-up on flaunt.network will appear here.</div>`}
+
+    ${pager}
 
     <p style="margin:0;font-size:11.5px;color:var(--bms-mute);">Every adjustment is written to the user&rsquo;s token ledger with your address as the actor.</p>`);
 }

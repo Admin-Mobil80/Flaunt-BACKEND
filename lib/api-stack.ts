@@ -98,6 +98,9 @@ export class ApiStack extends Stack {
 
     const adminFn = new lambdaNode.NodejsFunction(this, 'AdminApiFn', {
       ...common,
+      // Admin reads scan the whole profile set; 15s left no headroom at a
+      // thousand accounts.
+      timeout: Duration.seconds(30),
       functionName: `flaunt-api-admin${sfx}`,
       logGroup: logGroupFor('admin'),
       entry: path.join(__dirname, '../functions/api/admin/index.ts'),
