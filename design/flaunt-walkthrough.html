@@ -57,10 +57,42 @@ button { font:inherit; color:inherit; cursor:pointer; }
 .top nav { display:flex; gap:22px; align-items:center; }
 .top nav button { background:none; border:none; font-size:13.5px; color:var(--ink-soft); padding:0 0 3px; }
 .top nav button[aria-current="true"] { color:var(--ink); font-weight:500; border-bottom:1.5px solid var(--accent); }
-.purse { display:flex; align-items:center; gap:9px; border:1px solid var(--rule-2); padding:6px 13px; background:none; }
-.purse:hover { border-color:var(--accent); }
+/* The balance is the one number a member watches, so it is set as a value —
+   coin, tabular numeral, small-caps unit — rather than as a status line. */
+.purse { display:flex; align-items:center; gap:9px; border:1px solid var(--rule-2);
+  padding:6px 12px; background:var(--raised); transition:border-color .14s, box-shadow .14s; }
+.purse:hover { border-color:var(--accent); box-shadow:0 2px 0 var(--sunk); }
+.purse:active { transform:translateY(1px); }
+.purse .n { font-family:var(--mono); font-size:14.5px; font-weight:600; letter-spacing:-.02em;
+  font-variant-numeric:tabular-nums; color:var(--ink); line-height:1; }
+.purse .u { font-size:9.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--faint); }
+/* Running out is a state worth seeing before the invite dialog says so. */
+.purse.low { border-color:var(--warn-line); background:var(--warn-wash); }
+.purse.low .n, .purse.low .u { color:var(--warn); }
+.purse .add { font-size:12px; color:var(--accent); opacity:0; margin-left:-3px; transition:opacity .14s; }
+.purse:hover .add, .purse:focus-visible .add { opacity:1; }
+
 .avatar { border-radius:50%; background:#EDE3D6; color:#4A4137; font-family:var(--serif);
   display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+
+/* Identity and the things you do to it live under one control instead of
+   spreading a name, a face and a sign-out button across the bar. */
+.who { position:relative; display:flex; }
+.who-btn { width:34px; height:34px; border:1px solid var(--rule-2); border-radius:50%;
+  background:#EDE3D6; color:#4A4137; font-family:var(--serif); font-size:14px;
+  display:flex; align-items:center; justify-content:center;
+  transition:box-shadow .14s, border-color .14s; }
+.who-btn:hover, .who[data-open="true"] .who-btn { border-color:var(--accent); box-shadow:0 0 0 3px var(--accent-wash); }
+.who-menu { position:absolute; right:0; top:calc(100% + 10px); min-width:236px; z-index:60;
+  background:var(--raised); border:1px solid var(--rule-2); padding:6px;
+  box-shadow:0 12px 32px rgba(31,27,22,.12); display:flex; flex-direction:column; }
+.who-menu .hd { padding:10px 12px 11px; border-bottom:1px solid var(--rule);
+  margin:-6px -6px 6px; display:flex; flex-direction:column; gap:3px; background:var(--sunk); }
+.who-menu button { background:none; border:none; text-align:left; padding:9px 12px; font-size:13px;
+  color:var(--ink-2); display:flex; align-items:center; justify-content:space-between; gap:14px; }
+.who-menu button:hover { background:var(--sunk); color:var(--ink); }
+.who-menu .sep { height:1px; background:var(--rule); margin:6px 0; }
+.who-menu .out:hover { color:var(--accent); }
 .wrap { padding:clamp(18px,2.2vw,26px) clamp(20px,5vw,56px) 72px; }
 .col { max-width:764px; margin:0 auto; display:flex; flex-direction:column; gap:22px; }
 .col.wide { max-width:830px; }
@@ -307,16 +339,29 @@ function topbar(active) {
             : ''}</button>
       </nav>
     </div>
-    <div style="display:flex;align-items:center;gap:18px;">
-      <button class="purse" onclick="go('#/tokens')" title="Buy more tokens">
+    <div style="display:flex;align-items:center;gap:14px;">
+      <button class="purse ${S.me && S.me.tokenBalance <= 3 ? 'low' : ''}" onclick="go('#/tokens')"
+        title="${S.me && S.me.tokenBalance <= 3 ? 'Running low — buy more tokens' : 'Buy more tokens'}">
         <span style="color:var(--accent);display:flex;">${COIN}</span>
-        <span class="mono" style="font-size:13px;font-weight:500;">${S.me ? S.me.tokenBalance : '—'}</span>
-        <span class="lbl">tokens</span>
+        <span class="n">${S.me ? S.me.tokenBalance : '—'}</span>
+        <span class="u">token${S.me && S.me.tokenBalance === 1 ? '' : 's'}</span>
+        <span class="add" aria-hidden="true">+</span>
       </button>
-      <button onclick="go('#/profile')" title="Your profile" class="avatar"
-        style="width:34px;height:34px;font-size:14px;border:none;">${S.me ? initialsOf(S.me.name) : '·'}</button>
-      ${APP === 'portal' ? `<button onclick="signOut()" title="Signed in as ${esc((session() && session().email) || '')}"
-        style="background:none;border:1px solid var(--rule-2);color:var(--ink-2);font-size:12.5px;padding:7px 13px;">Sign out</button>` : ''}
+      <div class="who" id="user-menu" data-open="${S.userMenu ? 'true' : 'false'}">
+        <button class="who-btn" onclick="toggleUserMenu()" aria-haspopup="menu" aria-expanded="${S.userMenu ? 'true' : 'false'}"
+          title="${esc((S.me && S.me.name) || '')}">${S.me ? initialsOf(S.me.name) : '·'}</button>
+        ${!S.userMenu ? '' : `<div class="who-menu" role="menu">
+          <div class="hd">
+            <span class="trunc" style="font-family:var(--serif);font-size:15px;">${esc((S.me && S.me.name) || 'Signed in')}</span>
+            <span class="mono trunc" style="font-size:11px;color:var(--ink-soft);">${esc((S.me && S.me.email) || (session() && session().email) || '')}</span>
+          </div>
+          <button role="menuitem" onclick="S.userMenu=false;go('#/profile')">Your profile</button>
+          <button role="menuitem" onclick="S.userMenu=false;go('#/tokens')">Buy tokens
+            <span class="mono" style="font-size:11.5px;color:var(--faint);">${S.me ? S.me.tokenBalance : '—'}</span></button>
+          <div class="sep"></div>
+          <button role="menuitem" class="out" onclick="signOut()">Sign out</button>
+        </div>`}
+      </div>
     </div>
   </header>`;
 }
@@ -2618,6 +2663,17 @@ function render() {
     nf.setSelectionRange(nf.value.length, nf.value.length);
   }
 }
+function toggleUserMenu() { S.userMenu = !S.userMenu; render(); }
+
+addEventListener('click', function (e) {
+  if (!S.userMenu) return;
+  const wrap = document.getElementById('user-menu');
+  if (wrap && !wrap.contains(e.target)) { S.userMenu = false; render(); }
+});
+addEventListener('keydown', function (e) {
+  if (e.key === 'Escape' && S.userMenu) { S.userMenu = false; render(); }
+});
+
 addEventListener('hashchange', render);
 watchForNewVersion();
 if (!location.hash) location.hash = homeForApp();
