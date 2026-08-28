@@ -114,7 +114,9 @@ async function myConnections(userId: string) {
       connectedAt: r.connectedAt,
       connectionCount: counts[i].Count ?? 0,
     };
-  });
+  // Alphabetical, like every other list of people here. Connection order is
+  // the order they happened to accept in, which is meaningless to look at.
+  }).sort((x: any, y: any) => String(x.name).localeCompare(String(y.name)));
 }
 
 function shapeInvite(it: any, sender?: any) {

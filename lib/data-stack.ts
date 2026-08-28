@@ -178,9 +178,24 @@ export class DataStack extends Stack {
       defaultBehavior: {
         origin: origins.S3BucketOrigin.withOriginAccessControl(this.profilePhotoBucket),
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-        // Every photo URL carries the version it was written at, so a replaced
-        // face is a different URL and this can cache hard without going stale.
-        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+        // CACHING_OPTIMIZED drops query strings from the cache key, so ?v=
+        // changed nothing and a replaced photo kept serving the old bytes
+        // forever. The version has to be part of the key for the scheme to
+        // work at all.
+        cachePolicy: new cloudfront.CachePolicy(this, 'PhotoCachePolicy', {
+          cachePolicyName: `flaunt-photos${suffix(envName)}`.replace(/_/g, '-'),
+          comment: 'Profile photos, keyed by the version in ?v=',
+          queryStringBehavior: cloudfront.CacheQueryStringBehavior.allowList('v'),
+          headerBehavior: cloudfront.CacheHeaderBehavior.none(),
+          cookieBehavior: cloudfront.CacheCookieBehavior.none(),
+          // Safe to hold for a year: a new photo is a new version, therefore a
+          // new key, and nothing at an existing key ever changes.
+          defaultTtl: Duration.days(365),
+          maxTtl: Duration.days(365),
+          minTtl: Duration.days(1),
+          enableAcceptEncodingGzip: true,
+          enableAcceptEncodingBrotli: true,
+        }),
       },
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
     });
