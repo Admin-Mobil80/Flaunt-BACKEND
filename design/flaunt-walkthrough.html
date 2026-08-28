@@ -515,7 +515,7 @@ function vNetwork() {
   return topbar('network') + `<div class="wrap"><div class="col page">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <h1 class="big">Your network</h1>
-      <button onclick="openInvite()" style="background:none;border:none;padding:0;font-size:12.5px;color:var(--accent);">+ Invite someone</button>
+      <button class="btn" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>
     </div>
 
     <div style="display:flex;gap:24px;border-bottom:1px solid var(--rule-2);flex-wrap:wrap;">
@@ -540,7 +540,7 @@ function vNetwork() {
           ? `<p style="margin:20px 0;font-size:13.5px;color:var(--faint);">No direct connection matches “${esc(q)}”.</p>`
           : emptyState('No connections yet',
               'Your network is built one invitation at a time. Nobody is suggested to you and nothing is imported.',
-              `<button class="btn" onclick="openInvite()">Send your first invitation</button>`))}
+              `<button class="btn" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send your first invitation</button>`))}
     </div>` : `<div style="display:flex;flex-direction:column;">
       ${S.secondError ? `<p style="margin:16px 0;font-size:13px;color:var(--bad);">${esc(S.secondError)}</p>` : ''}
       ${S.second.length ? header(true) : ''}
@@ -951,7 +951,7 @@ function vInvitations() {
     <div style="display:flex;flex-direction:column;">${rows || `<p style="margin:24px 0;font-size:13.5px;color:var(--faint);">Nothing in this state.</p>`}</div>`
     : emptyState('No invitations yet',
         'Every connection on Flaunt starts with one. Sending costs a token, and you get it back if it is declined or goes unanswered for seven days.',
-        `<button class="btn" onclick="openInvite()">Send an invitation</button>`)}
+        `<button class="btn" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>`)}
     ${sent.length ? `<button class="btn" style="align-self:flex-start;" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>` : ''}`}
   </div></div>`;
 }
