@@ -431,6 +431,45 @@ function vWelcome() {
   </div>`;
 }
 
+/**
+ * Where a brand-new account lands.
+ *
+ * There is nothing to show a member with no connections, and an empty table
+ * reads as a broken product rather than a new one. This says what the tokens
+ * are for and gives them the one action that starts a network.
+ */
+function vFirstRun() {
+  const n = (S.me && S.me.tokenBalance) || 0;
+  return topbar('network') + `<div class="wrap"><div class="col page" style="max-width:640px;">
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <h1 class="big">Welcome to Flaunt${S.me && S.me.name ? `, ${esc(String(S.me.name).split(' ')[0])}` : ''}.</h1>
+      <p style="margin:0;font-size:14.5px;color:var(--ink-soft);line-height:1.6;">
+        Your network starts empty and stays that way until you invite someone. Nobody is suggested to
+        you, nothing is imported, and no one can find you without an introduction.</p>
+    </div>
+
+    <div style="border:1px solid var(--rule-2);background:var(--raised);padding:22px 24px;display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:baseline;gap:10px;">
+        <span class="mono" style="font-size:23px;font-weight:600;">${n}</span>
+        <span class="lbl">token${n === 1 ? '' : 's'} to start with</span>
+      </div>
+      <p style="margin:0;font-size:13.5px;color:var(--ink-2);line-height:1.6;">
+        One token sends one invitation. You get it back if they decline, or if seven days pass with no
+        answer &mdash; so an unanswered invitation costs you nothing.</p>
+      <button class="btn" style="align-self:flex-start;" onclick="openInvite()">
+        <span style="display:flex;">${COIN}</span>Send your first invitation</button>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:8px;">
+      <span class="lbl">Before you do</span>
+      <p style="margin:0;font-size:13.5px;color:var(--ink-soft);line-height:1.6;">
+        People decide whether to accept based on what your profile says. Adding your role and a line
+        about your work makes an invitation far more likely to land.</p>
+      <button class="btn ghost" style="align-self:flex-start;" onclick="go('#/profile')">Fill in your profile</button>
+    </div>
+  </div></div>`;
+}
+
 function vNetwork() {
   const q = (S.netFilter || '').trim().toLowerCase();
   const matches = (p) => !q || [p.name, p.designation, p.organisation, p.location, p.viaName]
@@ -2430,7 +2469,24 @@ function render() {
   let h = location.hash || homeForApp();
   const isBms = h.indexOf('#/bms/') === 0;
   if ((APP === 'portal' && isBms) || (APP === 'bms' && !isBms)) { h = homeForApp(); location.hash = h; }
-  document.getElementById('app').innerHTML = view();
+  /**
+   * A throwing view used to freeze the app.
+   *
+   * render() assigns innerHTML from view(), so an exception inside any view
+   * aborted before the assignment and left whatever was on screen — for a new
+   * account, the loading skeleton, forever, with no error anywhere the user
+   * could see. Failing loudly here costs one screen instead of the session.
+   */
+  let html;
+  try {
+    html = view();
+  } catch (err) {
+    console.error('view() failed', err);
+    html = `<div class="wrap"><div class="col">${emptyState('Something went wrong on this screen',
+      String((err && err.message) || err),
+      `<button class="btn" onclick="location.hash=homeForApp();render();">Back to safety</button>`)}</div></div>`;
+  }
+  document.getElementById('app').innerHTML = html;
   document.getElementById('layer').innerHTML = modalHtml() + versionTip()
     + (S.toast ? `<div class="toast">${esc(S.toast)}</div>` : '');
 
