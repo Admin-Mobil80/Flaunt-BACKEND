@@ -2,7 +2,7 @@ import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda
 import { GetCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import { verifyWebhook , webhookSecretFor } from '../../shared/razorpay';
-import { coercePaymentMode } from '../../shared/pricing';
+import { coercePaymentMode, PaymentMode } from '../../shared/pricing';
 import * as k from '../../shared/keys';
 
 /**
@@ -40,7 +40,27 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
   const signingSecret = await webhookSecretFor(mode);
 
   if (!verifyWebhook(raw, signature, signingSecret)) {
-    console.warn(JSON.stringify({ msg: 'webhook signature rejected', mode }));
+    // A bare "rejected" tells you nothing you can act on. The three causes look
+    // identical from outside and have completely different fixes, so name which
+    // one it is: no signature header at all, the other environment's secret
+    // pasted into this webhook, or a secret matching nothing we hold.
+    let diagnosis = 'secret does not match — re-copy it from Secrets Manager into the Razorpay webhook';
+    if (!signature) {
+      diagnosis = 'no x-razorpay-signature header — the webhook has no secret set in the Razorpay dashboard';
+    } else {
+      const other: PaymentMode = mode === 'test' ? 'live' : 'test';
+      try {
+        if (verifyWebhook(raw, signature, await webhookSecretFor(other))) {
+          diagnosis = `signature matches the ${other} secret — this webhook carries the wrong environment's secret`;
+        }
+      } catch { /* the other secret being unreadable is not this request's problem */ }
+    }
+    console.warn(JSON.stringify({
+      msg: 'webhook signature rejected', mode, diagnosis,
+      signaturePresent: Boolean(signature),
+      // A MAC prefix, not a secret — enough to tell two deliveries apart in a log.
+      signaturePrefix: signature.slice(0, 8),
+    }));
     return { statusCode: 401, body: 'invalid signature' };
   }
 
