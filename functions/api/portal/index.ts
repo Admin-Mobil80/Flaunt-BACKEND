@@ -978,7 +978,7 @@ async function loadGatekeeperInvite(userId: string, inviteId: string) {
 }
 
 /** Approving forwards the request to the target; the token stays spent. */
-async function approveIntroduction(userId: string, inviteId: string) {
+async function approveIntroduction(userId: string, inviteId: string, rawNote?: string) {
   const inv = await loadGatekeeperInvite(userId, inviteId);
   if (inv.status === k.INVITE_STATUS.INTRO_PENDING) return shapeInvite(inv);
   if (inv.status !== k.INVITE_STATUS.PENDING_GATEKEEPER) {
@@ -1000,6 +1000,19 @@ async function approveIntroduction(userId: string, inviteId: string) {
     },
   }));
 
+  // A note is the whole point of a human introduction rather than a forwarded
+  // form — it is the introducer putting their own credibility behind it. Kept
+  // short so it reads as a vouch rather than a covering letter.
+  const note = typeof rawNote === 'string' && rawNote.trim() !== ''
+    ? rawNote.trim().slice(0, 600) : null;
+  if (note) {
+    await ddb.send(new UpdateCommand({
+      TableName: TABLE_NAME, Key: k.invite(inviteId),
+      UpdateExpression: 'SET gatekeeperNote = :n',
+      ExpressionAttributeValues: { ':n': note },
+    }));
+  }
+
   const [requester, gatekeeper] = await Promise.all([loadProfile(inv.senderId), loadProfile(userId)]);
   await send(introForwardEmail({
     to: inv.recipientEmail,
@@ -1007,6 +1020,7 @@ async function approveIntroduction(userId: string, inviteId: string) {
     requesterLine: [requester.designation, requester.organisation].filter(Boolean).join(', '),
     requesterBio: requester.bio ?? null,
     gatekeeperName: gatekeeper.name,
+    note,
     inviteId,
   }));
 
@@ -1092,7 +1106,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'secondDegree': return secondDegree(userId, args.limit ?? 50, args.offset ?? 0);
     case 'gatekeeperRequests': return gatekeeperRequests(userId);
     case 'requestIntroduction': return requestIntroduction(userId, args.targetUserId, args.viaUserId);
-    case 'approveIntroduction': return approveIntroduction(userId, args.inviteId);
+    case 'approveIntroduction': return approveIntroduction(userId, args.inviteId, args.note);
     case 'declineIntroduction': return declineIntroduction(userId, args.inviteId);
     case 'myInvitations': return myInvitations(userId);
     case 'tokenPrice': return tokenPrice(userId);

@@ -283,6 +283,10 @@ function topbar(active) {
       <nav>
         <button onclick="go('#/network')" ${active==='network'?'aria-current="true"':''}>Network</button>
         <button onclick="go('#/invitations')" ${active==='invitations'?'aria-current="true"':''}>Invitations</button>
+        <button onclick="go('#/gatekeeper')" ${active==='gatekeeper'?'aria-current="true"':''}>Introductions${
+          S.gatekeeper && S.gatekeeper.length
+            ? ` <span class="mono" style="font-size:10.5px;background:var(--accent);color:var(--paper);padding:1px 6px;margin-left:4px;">${S.gatekeeper.length}</span>`
+            : ''}</button>
       </nav>
     </div>
     <div style="display:flex;align-items:center;gap:18px;">
@@ -522,7 +526,7 @@ async function openProfile(userId) {
     const d = await gql(`query P($id:ID!){ profile(userId:$id){
       userId name designation organisation location bio country
       primaryEmail secondaryEmail secondaryEmailUnverified connectedAt degree viaName } }`, { id: userId });
-    S.viewing = { loading: false, userId, profile: d.profile, error: null, theirs: null, theirsLoading: false };
+    S.viewing = { loading: false, userId, profile: d.profile, error: null, theirs: null, theirsLoading: false, tab: 'details' };
   } catch (e) {
     S.viewing = { loading: false, userId, profile: null, error: e.message };
   }
@@ -532,7 +536,7 @@ async function openProfile(userId) {
 function vGatekeeperInbox() {
   if (S.gatekeeper === null && !S.gkLoading && !S.gkError) loadGatekeeper();
   const rs = S.gatekeeper || [];
-  return topbar('invitations') + `<div class="wrap"><div class="col" style="max-width:700px;gap:26px;">
+  return topbar('gatekeeper') + `<div class="wrap"><div class="col" style="max-width:700px;gap:26px;">
     <div style="display:flex;flex-direction:column;gap:7px;">
       <h1 class="big">Introduction requests</h1>
       <p style="margin:0;font-size:14px;color:var(--ink-soft);">People you know asking to be introduced to other people you know.</p>
@@ -556,6 +560,13 @@ function vGatekeeperInbox() {
         </div>
       </div>
       <p style="margin:0;font-size:12.5px;color:var(--ink-soft);line-height:1.6;">${esc(r.targetName)} hears nothing unless you approve. If you decline, ${esc(r.requesterName)} is told you passed &mdash; not why &mdash; and their token is returned.${r.daysLeft !== null ? ` ${r.daysLeft} day${r.daysLeft === 1 ? '' : 's'} left.` : ''}</p>
+      <div style="display:flex;flex-direction:column;gap:7px;">
+        <label class="lbl" for="gk-note-${r.inviteId}">Add a note <span style="text-transform:none;letter-spacing:0;color:var(--faint);">&mdash; optional, and the reason this reads as an introduction rather than a forwarded form</span></label>
+        <textarea id="gk-note-${r.inviteId}" maxlength="600"
+          placeholder="Why you think they should meet. ${esc(r.targetName.split(' ')[0])} sees this alongside ${esc(r.requesterName.split(' ')[0])}&rsquo;s profile."
+          style="border:1px solid var(--rule-2);background:var(--raised);padding:11px 13px;font-size:13.5px;
+            line-height:1.6;height:78px;resize:vertical;outline:none;font-family:inherit;color:var(--ink-2);"></textarea>
+      </div>
       <div style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
         <button class="btn" onclick="decideIntroduction('${r.inviteId}',true,'${esc(r.requesterName)}','${esc(r.targetName)}')">Approve introduction</button>
         <button class="btn ghost" onclick="decideIntroduction('${r.inviteId}',false,'${esc(r.requesterName)}','${esc(r.targetName)}')">Decline</button>
@@ -578,6 +589,11 @@ function vProfile(id) {
 
   const p = v.profile;
   const first = p.degree === 1 || p.degree === 0;
+  // Opening the connections tab is what asks for the data — it is a read per
+  // contact-of-contact, so it is not fetched with the profile itself.
+  if (first && (v.tab || 'details') === 'connections' && v.theirs === null && !v.theirsLoading) {
+    loadTheirConnections(p.userId);
+  }
   const second = p.degree === 2;
   const badge = first
     ? `<span class="chip" style="border-color:var(--good-line);background:var(--good-wash);"><span class="dot" style="background:var(--good);"></span><span class="lbl" style="color:var(--good);">${p.degree === 0 ? 'You' : '1st degree'}</span></span>`
@@ -626,6 +642,18 @@ function vProfile(id) {
       </div>
     </div>
 
+    ${first ? `<div style="display:flex;gap:24px;border-bottom:1px solid var(--rule-2);flex-wrap:wrap;">
+      ${['details','connections'].map((t) => {
+        const on = (v.tab || 'details') === t;
+        const label = t === 'details' ? 'Details' : `${esc((p.name || '').split(' ')[0])}&rsquo;s connections`;
+        return `<button onclick="S.viewing={...S.viewing,tab:'${t}'};render();" aria-current="${on}"
+          style="background:none;border:none;border-bottom:1.5px solid ${on ? 'var(--accent)' : 'transparent'};
+            color:${on ? 'var(--ink)' : 'var(--ink-soft)'};font-weight:${on ? 500 : 400};font-size:13.5px;padding:0 0 10px;">
+          ${label}</button>`;
+      }).join('')}
+    </div>` : ''}
+
+    ${(v.tab || 'details') !== 'details' ? '' : `
     ${p.bio ? `<div style="display:flex;flex-direction:column;gap:12px;">
       <span class="lbl">Professional description</span>
       <p style="margin:0;font-size:15px;line-height:1.72;color:var(--ink-2);max-width:62ch;text-wrap:pretty;">${esc(p.bio)}</p>
@@ -648,13 +676,13 @@ function vProfile(id) {
       </div>
     </div>` : ''}
 
-    ${p.degree === 1 ? `<div style="display:flex;flex-direction:column;gap:0;border-top:1px solid var(--rule-2);padding-top:22px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding-bottom:9px;border-bottom:1px solid var(--rule-2);">
-        <span class="lbl">${esc((p.name || '').split(' ')[0])}&rsquo;s connections</span>
-        ${v.theirs === null && !v.theirsLoading ? `<button onclick="loadTheirConnections('${p.userId}')"
-          style="background:none;border:none;padding:0;font-size:12.5px;color:var(--accent);">Show</button>` : ''}
+    `}
+
+    ${p.degree === 1 && (v.tab || 'details') === 'connections' ? `<div style="display:flex;flex-direction:column;gap:0;">
+      <div class="lrow hide-sm" style="grid-template-columns:26px minmax(110px,1fr) minmax(0,1.3fr) 110px;border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
+        <span></span><span class="lbl">Name</span><span class="lbl">Role</span><span class="lbl" style="text-align:right;">Relationship</span>
       </div>
-      ${v.theirsLoading ? `<p style="margin:12px 0;font-size:13px;color:var(--ink-soft);">Loading…</p>` : ''}
+      ${v.theirsLoading ? `<p style="margin:14px 0;font-size:13px;color:var(--ink-soft);">Loading…</p>` : ''}
       ${v.theirs && v.theirs.length ? v.theirs.map((c) => {
         const crole = [c.designation, c.organisation].filter(Boolean).join(' · ');
         return `<div class="lrow" style="grid-template-columns:26px minmax(110px,1fr) minmax(0,1.3fr) 96px;">
@@ -671,13 +699,13 @@ function vProfile(id) {
       ${v.theirsError ? `<p style="margin:12px 0;font-size:12.5px;color:var(--bad);">${esc(v.theirsError)}</p>` : ''}
     </div>` : ''}
 
-    ${p.degree === 1 ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid var(--rule);padding-top:20px;flex-wrap:wrap;">
+    ${p.degree === 1 && (v.tab || 'details') === 'details' ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:14px;border-top:1px solid var(--rule);padding-top:20px;flex-wrap:wrap;">
       <span style="font-size:12.5px;color:var(--ink-soft);max-width:46ch;line-height:1.55;">Removing takes the connection away for you both. Your token is not returned &mdash; it paid for an introduction that happened.</span>
       <button class="btn ghost" onclick="removeConnection('${p.userId}','${esc(p.name)}')"
         style="padding:9px 16px;font-size:13px;">Remove connection</button>
     </div>` : ''}
 
-    ${p.degree === 1 && p.connectedAt ? `<div style="display:flex;align-items:center;gap:9px;border-top:1px solid var(--rule);padding-top:20px;">
+    ${p.degree === 1 && p.connectedAt && (v.tab || 'details') === 'details' ? `<div style="display:flex;align-items:center;gap:9px;border-top:1px solid var(--rule);padding-top:20px;">
       <span style="color:var(--good);display:flex;"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M5 12.5 L10 17.5 L19 7"/></svg></span>
       <span style="font-size:13px;color:var(--ink-soft);">Connected since ${esc(String(p.connectedAt).slice(0,10))}. Full contact details are visible to you both.</span>
     </div>` : ''}
@@ -719,7 +747,6 @@ function vInvitations() {
   return topbar('invitations') + `<div class="wrap"><div class="col wide" style="gap:26px;">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <h1 class="big">Invitations</h1>
-      <button onclick="go('#/gatekeeper')" style="background:none;border:none;padding:0;font-size:12.5px;color:var(--accent);">Introduction requests &rarr;</button>
       ${refunded ? `<div style="display:flex;align-items:center;gap:8px;color:var(--good);">
         ${RETURN}<span style="font-size:13px;">${refunded} token${refunded===1?'':'s'} returned to you</span></div>` : ''}
     </div>
@@ -1393,10 +1420,18 @@ async function loadGatekeeper() {
 async function decideIntroduction(inviteId, approve, requesterName, targetName) {
   const op = approve ? 'approveIntroduction' : 'declineIntroduction';
   if (!approve && !confirm(`Decline the introduction between ${requesterName} and ${targetName}?\n\n${requesterName} is told you passed, not why, and their token is returned.`)) return;
+  // Read the note before anything re-renders and destroys the textarea.
+  const el = document.getElementById('gk-note-' + inviteId);
+  const note = el ? el.value.trim() : '';
   try {
-    await gql(`mutation D($i:ID!){ ${op}(inviteId:$i){ inviteId status } }`, { i: inviteId });
+    if (approve) {
+      await gql(`mutation A($i:ID!,$n:String){ approveIntroduction(inviteId:$i, note:$n){ inviteId status } }`,
+        { i: inviteId, n: note || null });
+    } else {
+      await gql(`mutation D($i:ID!){ declineIntroduction(inviteId:$i){ inviteId status } }`, { i: inviteId });
+    }
     await loadGatekeeper();
-    toast(approve ? `Introduced. ${targetName} has been emailed.` : 'Declined. Their token has been returned.');
+    toast(approve ? `Introduced. ${targetName} has been emailed${note ? ' with your note' : ''}.` : 'Declined. Their token has been returned.');
   } catch (e) { toast(e.message); }
 }
 
@@ -1860,6 +1895,8 @@ function render() {
   renderNotice();
   // Nothing truthful can be rendered until the first load returns.
   if (APP === 'portal' && signedIn() && !S.me && !S.dataError && !S.loading) loadPortal();
+  // The badge needs the count before the page is opened.
+  if (APP === 'portal' && S.me && S.gatekeeper === null && !S.gkLoading && !S.gkError) loadGatekeeper();
   if (APP === 'bms' && signedIn() && !S.stats && !S.dataError && !S.loading) loadBms();
 
   // portal must not serve the admin console, and bms must not serve the user

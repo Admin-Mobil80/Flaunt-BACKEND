@@ -188,7 +188,9 @@ type Mutation {
   # declines, or nobody responds within seven days.
   requestIntroduction(targetUserId: ID!, viaUserId: ID!): Invitation!
   # Gatekeeper decisions. Approving forwards the request to the target.
-  approveIntroduction(inviteId: ID!): Invitation!
+  # The note is the introducer vouching in their own words — it is what turns a
+  # forwarded request into a real introduction.
+  approveIntroduction(inviteId: ID!, note: String): Invitation!
   declineIntroduction(inviteId: ID!): Invitation!
   updateProfile(
     name: String
