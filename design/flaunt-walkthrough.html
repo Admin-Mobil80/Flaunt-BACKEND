@@ -610,12 +610,35 @@ function statusLabel(st) {
   })[st] || String(st || '').replace(/_/g, ' ').toLowerCase();
 }
 
+/**
+ * Direction tabs for the two inbox pages.
+ *
+ * Stacking "waiting on you" above "you asked for" put two different jobs on one
+ * screen — things needing a decision and things needing patience. They read as
+ * one list. Splitting them makes the actionable half the default.
+ */
+function dirTabs(active, key, tabs) {
+  return `<div style="display:flex;gap:24px;border-bottom:1px solid var(--rule-2);flex-wrap:wrap;">
+    ${tabs.map(([id, label, n]) => {
+      const on = active === id;
+      return `<button onclick="S.${key}='${id}';render();" aria-current="${on}"
+        style="background:none;border:none;border-bottom:1.5px solid ${on ? 'var(--accent)' : 'transparent'};
+          color:${on ? 'var(--ink)' : 'var(--ink-soft)'};font-weight:${on ? 500 : 400};font-size:13.5px;
+          padding:0 0 10px;display:flex;align-items:center;gap:7px;">
+        ${label}<span class="mono" style="font-size:11px;color:${n ? 'var(--accent)' : 'var(--faint)'};">${n}</span></button>`;
+    }).join('')}
+  </div>`;
+}
+
 function vGatekeeperInbox() {
   if (S.gatekeeper === null && !S.gkLoading && !S.gkError) loadGatekeeper();
   const rs = S.gatekeeper || [];
   // The other half: introductions this member asked for. They were previously
   // filed under Invitations, where they read as invitations to strangers.
   const mine = (S.invites || []).filter((r) => r.type === 'INTRO');
+  // Land on whichever half needs a decision; fall back to the other when there
+  // is nothing to decide, so the page never opens on an empty tab.
+  const gkTab = S.gkTab || (rs.length ? 'inbox' : (mine.length ? 'sent' : 'inbox'));
   const tone = (st) => ['PENDING','PENDING_GATEKEEPER','INTRO_PENDING'].indexOf(st) > -1
     ? {bd:'var(--warn-line)',bg:'var(--warn-wash)',fg:'var(--warn)'}
     : st === 'ACCEPTED' ? {bd:'#CFC6B6',bg:'#F4F0E8',fg:'#6B6459'}
@@ -627,25 +650,26 @@ function vGatekeeperInbox() {
       <p style="margin:0;font-size:14px;color:var(--ink-soft);">Introductions you have asked for, and introductions people have asked of you.</p>
     </div>
 
-    ${mine.length ? `<div style="display:flex;flex-direction:column;gap:10px;">
-      <span class="lbl">You asked for</span>
-      <div class="lrow hide-sm" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1.1fr) 118px minmax(0,120px);border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
+    ${dirTabs(gkTab, 'gkTab', [['inbox','Asked of you',rs.length],['sent','You asked for',mine.length]])}
+
+    ${gkTab === 'sent' ? (mine.length ? `<div style="display:flex;flex-direction:column;">
+      <div class="lrow hide-sm" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1.1fr) 152px minmax(0,110px);border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
         <span class="lbl">To meet</span><span class="lbl">Through</span><span class="lbl">State</span><span class="lbl">Token</span>
       </div>
-      ${mine.map((r) => { const t = tone(r.status); return `<div class="lrow" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1.1fr) 118px minmax(0,120px);">
+      ${mine.map((r) => { const t = tone(r.status); return `<div class="lrow" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1.1fr) 152px minmax(0,110px);">
         <span class="trunc" style="font-family:var(--serif);font-size:15px;">${esc(r.targetName || r.recipientEmail || 'Someone')}</span>
         <span class="trunc hide-sm" style="font-size:12.5px;color:var(--ink-soft);">${esc(r.gatekeeperName || '—')}</span>
         <span><span class="chip" style="border-color:${t.bd};background:${t.bg};padding:2px 7px;"><span class="dot" style="background:${t.fg};"></span><span class="lbl" style="color:${t.fg};font-size:9.5px;white-space:nowrap;">${esc(statusLabel(r.status))}</span></span></span>
         <span class="trunc hide-sm" style="font-size:12px;color:${r.tokenOutcome.indexOf('returned')>-1?'var(--good)':'var(--ink-soft)'};">${esc(r.tokenOutcome)}${r.daysLeft!==null&&r.daysLeft!==undefined?esc(' \u00b7 '+r.daysLeft+'d'):''}</span>
       </div>`; }).join('')}
-    </div>` : ''}
-
-    ${(mine.length && (rs.length || S.gkLoading)) ? `<span class="lbl" style="margin-top:4px;">Waiting on you</span>` : ''}
+    </div>` : emptyState('You have not asked for any introductions',
+        'Open a second-degree profile and ask whoever you both know to make the introduction.', '')) : ''}
+    ${gkTab !== 'inbox' ? '' : `
     ${S.gkError ? `<p style="font-size:13px;color:var(--bad);">${esc(S.gkError)}</p>` : ''}
     ${S.gkLoading ? `<p style="font-size:13.5px;color:var(--ink-soft);">Loading…</p>` : ''}
-    ${!S.gkLoading && rs.length === 0 && mine.length === 0 ? emptyState('No introductions yet',
-      'Ask to be introduced from any second-degree profile, and requests people make of you appear here.', '') : ''}
-    ${rs.map((r) => `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:22px 24px;display:flex;flex-direction:column;gap:16px;">
+    ${!S.gkLoading && rs.length === 0 ? emptyState('Nothing waiting on you',
+      'When someone you know asks to be introduced to another of your connections, it appears here.', '') : ''}`}
+    ${gkTab !== 'inbox' ? '' : rs.map((r) => `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:22px 24px;display:flex;flex-direction:column;gap:16px;">
       <span class="serif" style="font-size:19px;line-height:1.35;">${esc(r.requesterName)} would like an introduction to ${esc(r.targetName)}.</span>
       <div class="grid2">
         <div style="display:flex;flex-direction:column;gap:3px;">
@@ -828,6 +852,7 @@ function vInvitations() {
   const sent = (S.invites || []).filter((r) => r.type !== 'INTRO');
   const waitingOnYou = (S.incoming || []).filter((r) =>
     r.type !== 'INTRO' && ['PENDING','PENDING_GATEKEEPER','INTRO_PENDING'].indexOf(r.status) > -1);
+  const invTab = S.invTab || (waitingOnYou.length ? 'inbox' : 'sent');
 
   const TABS = [['all','All'],['PENDING','Open'],['ACCEPTED','Accepted'],['REJECTED','Declined'],['EXPIRED','Expired'],['CANCELLED','Cancelled']];
   const tabs = TABS.map(([id,label]) => {
@@ -866,8 +891,9 @@ function vInvitations() {
       ${refunded ? `<div style="display:flex;align-items:center;gap:8px;color:var(--good);">
         ${RETURN}<span style="font-size:13px;">${refunded} token${refunded===1?'':'s'} returned to you</span></div>` : ''}
     </div>
-    ${waitingOnYou.length ? `<div style="display:flex;flex-direction:column;gap:10px;">
-      <span class="lbl">Waiting on you</span>
+    ${dirTabs(invTab, 'invTab', [['inbox','Waiting on you',waitingOnYou.length],['sent','Sent by you',sent.length]])}
+
+    ${invTab !== 'inbox' ? '' : (waitingOnYou.length ? `<div style="display:flex;flex-direction:column;gap:10px;">
       <div style="display:flex;flex-direction:column;border:1px solid var(--rule-2);background:var(--raised);">
         ${waitingOnYou.map((r) => `<div class="lrow" style="grid-template-columns:26px minmax(0,1fr) auto;padding-left:14px;padding-right:14px;">
           <span class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initialsOf(r.senderName || '?')}</span>
@@ -880,18 +906,19 @@ function vInvitations() {
             <button class="btn" style="padding:6px 14px;font-size:12.5px;" onclick="acceptInviteInline('${r.inviteId}')">Accept</button>
           </span></div>`).join('')}
       </div>
-    </div>` : ''}
+    </div>` : emptyState('Nothing waiting on you',
+        'Invitations people send you appear here, with everything you need to decide.', ''))}
 
-    ${sent.length ? `<span class="lbl">Sent by you</span>
-    <div style="display:flex;gap:22px;border-bottom:1px solid var(--rule-2);flex-wrap:wrap;margin-top:-6px;">${tabs}</div>
+    ${invTab !== 'sent' ? '' : `${sent.length ? `
+    <div style="display:flex;gap:22px;border-bottom:1px solid var(--rule-2);flex-wrap:wrap;">${tabs}</div>
     <div class="lrow hide-sm" style="grid-template-columns:minmax(0,1.6fr) 118px 96px minmax(0,132px) 74px;border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
       <span class="lbl">Recipient</span><span class="lbl">State</span><span class="lbl">Sent</span><span class="lbl">Token</span><span></span>
     </div>
     <div style="display:flex;flex-direction:column;">${rows || `<p style="margin:24px 0;font-size:13.5px;color:var(--faint);">Nothing in this state.</p>`}</div>`
-    : (waitingOnYou.length ? '' : emptyState('No invitations yet',
+    : emptyState('No invitations yet',
         'Every connection on Flaunt starts with one. Sending costs a token, and you get it back if it is declined or goes unanswered for seven days.',
-        `<button class="btn" onclick="openInvite()">Send an invitation</button>`))}
-    ${sent.length ? `<button class="btn" style="align-self:flex-start;" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>` : ''}
+        `<button class="btn" onclick="openInvite()">Send an invitation</button>`)}
+    ${sent.length ? `<button class="btn" style="align-self:flex-start;" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>` : ''}`}
   </div></div>`;
 }
 
