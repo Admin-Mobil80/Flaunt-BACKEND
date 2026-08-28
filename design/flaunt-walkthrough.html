@@ -630,6 +630,21 @@ function dirTabs(active, key, tabs) {
   </div>`;
 }
 
+/**
+ * Opening one request does not close the others: a gatekeeper comparing two
+ * asks about the same person should be able to see both at once.
+ */
+function toggleGk(id, singleOpenByDefault) {
+  if (!S.gkOpen) {
+    // Seed from what is currently on screen so the first click toggles what the
+    // reader sees, rather than silently flipping to a different default.
+    S.gkOpen = {};
+    if (singleOpenByDefault) S.gkOpen[id] = true;
+  }
+  S.gkOpen[id] = !S.gkOpen[id];
+  render();
+}
+
 function vGatekeeperInbox() {
   if (S.gatekeeper === null && !S.gkLoading && !S.gkError) loadGatekeeper();
   const rs = S.gatekeeper || [];
@@ -669,8 +684,26 @@ function vGatekeeperInbox() {
     ${S.gkLoading ? `<p style="font-size:13.5px;color:var(--ink-soft);">Loading…</p>` : ''}
     ${!S.gkLoading && rs.length === 0 ? emptyState('Nothing waiting on you',
       'When someone you know asks to be introduced to another of your connections, it appears here.', '') : ''}`}
-    ${gkTab !== 'inbox' ? '' : rs.map((r) => `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:22px 24px;display:flex;flex-direction:column;gap:16px;">
-      <span class="serif" style="font-size:19px;line-height:1.35;">${esc(r.requesterName)} would like an introduction to ${esc(r.targetName)}.</span>
+    ${gkTab !== 'inbox' ? '' : rs.map((r) => {
+      // A single request is opened for you — there is nothing to tidy and one
+      // extra click to reach the only thing on the page. Several stay closed so
+      // the queue is readable at a glance.
+      const open = S.gkOpen ? S.gkOpen[r.inviteId] === true : rs.length === 1;
+      return `<div style="border:1px solid var(--rule-2);background:var(--raised);display:flex;flex-direction:column;">
+      <button onclick="toggleGk('${r.inviteId}', ${rs.length === 1})" aria-expanded="${open}"
+        style="background:none;border:none;text-align:left;padding:16px 22px;display:flex;align-items:center;gap:14px;width:100%;">
+        <span class="avatar" style="width:30px;height:30px;font-size:11.5px;flex:none;">${initialsOf(r.requesterName)}</span>
+        <span style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;">
+          <span class="serif trunc" style="font-size:16px;">${esc(r.requesterName)} &rarr; ${esc(r.targetName)}</span>
+          <span class="trunc" style="font-size:12px;color:var(--ink-soft);">${esc(r.requesterDesignation || 'Wants an introduction')}</span>
+        </span>
+        ${r.daysLeft !== null && r.daysLeft !== undefined
+          ? `<span class="lbl" style="color:var(--warn);white-space:nowrap;flex:none;">${r.daysLeft}d left</span>` : ''}
+        <span style="color:var(--ghost);display:flex;flex:none;transform:rotate(${open ? '90' : '0'}deg);transition:transform .12s;">${CHEV}</span>
+      </button>
+
+      ${!open ? '' : `<div style="padding:2px 24px 22px;display:flex;flex-direction:column;gap:16px;border-top:1px solid var(--rule);">
+      <span class="serif" style="font-size:18px;line-height:1.35;padding-top:16px;">${esc(r.requesterName)} would like an introduction to ${esc(r.targetName)}.</span>
       <div class="grid2">
         <div style="display:flex;flex-direction:column;gap:3px;">
           <span class="lbl">Asking</span>
@@ -695,7 +728,8 @@ function vGatekeeperInbox() {
         <button class="btn" onclick="decideIntroduction('${r.inviteId}',true,'${esc(r.requesterName)}','${esc(r.targetName)}')">Approve introduction</button>
         <button class="btn ghost" onclick="decideIntroduction('${r.inviteId}',false,'${esc(r.requesterName)}','${esc(r.targetName)}')">Decline</button>
       </div>
-    </div>`).join('')}
+      </div>`}
+    </div>`; }).join('')}
   </div></div>`;
 }
 
