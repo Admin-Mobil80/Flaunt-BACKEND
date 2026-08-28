@@ -2,6 +2,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 __FAVICON__
 <title>__TITLE__</title>
+<meta name="description" content="__TAGLINE__ Invitation-only, and every invitation costs the sender a token — refunded if it goes unanswered.">
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Flaunt">
+<meta property="og:title" content="__OG_TITLE__">
+<meta property="og:description" content="__TAGLINE__ Invitation-only, and every invitation costs the sender a token — refunded if it goes unanswered.">
+<meta property="og:url" content="__SITE_URL__">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="__OG_TITLE__">
+<meta name="twitter:description" content="__TAGLINE__ Invitation-only, and every invitation costs the sender a token — refunded if it goes unanswered.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
@@ -292,12 +301,17 @@ var PHOTO_BASE = '__PHOTO_BASE__';
  * laptop the attribute is ignored and the button would just be a second
  * identical file picker, so it is not shown at all.
  */
-var HAS_CAMERA = (function () {
-  try {
-    return matchMedia('(pointer: coarse)').matches
-      && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
-  } catch (e) { return false; }
-})();
+/**
+ * Whether the phone's own camera app is the better route.
+ *
+ * On a touch device `capture` opens the camera directly, which beats anything
+ * in-page. On a laptop the attribute is ignored, so the same button would just
+ * be a second file picker — there, an in-page preview is the only real camera.
+ * Either way the button is shown; only what it does changes.
+ */
+function prefersNativeCapture() {
+  try { return matchMedia('(pointer: coarse)').matches; } catch (e) { return false; }
+}
 
 var CAMERA = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
@@ -1878,6 +1892,12 @@ async function uploadPhoto(input) {
   const file = input && input.files && input.files[0];
   if (!file) return;
   if (!/^image\//.test(file.type)) { toast('Choose an image file.'); return; }
+  // Clear it, or picking the same file twice in a row fires no change event.
+  input.value = '';
+  await uploadPhotoBlob(file);
+}
+
+async function uploadPhotoBlob(file) {
   S.photoBusy = true; S.profileError = null; render();
   try {
     const d = await gql(`mutation { createPhotoUpload { uploads { size pixels url } } }`);
@@ -1902,6 +1922,61 @@ async function removePhoto() {
     toast('Photo removed.');
   } catch (e) { toast(e.message); }
   finally { S.photoBusy = false; render(); }
+}
+
+/**
+ * A live preview, used only where the native camera is not reachable.
+ *
+ * getUserMedia needs a secure context and explicit consent, and either can be
+ * refused — so every failure lands on the file chooser rather than a dead end.
+ */
+async function openCamera() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    toast('This browser cannot open the camera. Choose a photo instead.');
+    return;
+  }
+  S.modal = 'camera'; render();
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 1280 } },
+      audio: false,
+    });
+    S.cameraStream = stream;
+    const v = document.getElementById('cam-video');
+    if (v) { v.srcObject = stream; await v.play().catch(() => {}); }
+    else { closeCamera(); }
+  } catch (e) {
+    closeCamera();
+    toast(e && e.name === 'NotAllowedError'
+      ? 'Camera access was refused. Choose a photo instead.'
+      : 'No camera available. Choose a photo instead.');
+  }
+}
+
+function closeCamera() {
+  if (S.cameraStream) {
+    // Leaving the track running keeps the recording light on, which is
+    // alarming and looks like the page is still watching.
+    S.cameraStream.getTracks().forEach((t) => t.stop());
+    S.cameraStream = null;
+  }
+  if (S.modal === 'camera') S.modal = null;
+  render();
+}
+
+async function takePhoto() {
+  const v = document.getElementById('cam-video');
+  if (!v || !v.videoWidth) { toast('The camera is not ready yet.'); return; }
+  const side = Math.min(v.videoWidth, v.videoHeight);
+  const c = document.createElement('canvas');
+  c.width = side; c.height = side;
+  const ctx = c.getContext('2d');
+  // Mirrored, because a preview that does not mirror reads as someone else.
+  ctx.translate(side, 0); ctx.scale(-1, 1);
+  ctx.drawImage(v, (v.videoWidth - side) / 2, (v.videoHeight - side) / 2, side, side, 0, 0, side, side);
+  const blob = await new Promise((r) => c.toBlob(r, 'image/webp', 0.9));
+  closeCamera();
+  if (blob) await uploadPhotoBlob(blob);
 }
 
 function vProfileEdit() {
@@ -1934,10 +2009,15 @@ function vProfileEdit() {
             ${S.photoBusy ? 'Uploading…' : (m.photoAt ? 'Replace' : 'Choose a photo')}
             <input type="file" accept="image/*" ${S.photoBusy ? 'disabled' : ''} onchange="uploadPhoto(this)" style="display:none;">
           </label>
-          ${HAS_CAMERA ? `<label class="btn ghost" style="cursor:pointer;padding:7px 14px;font-size:12.5px;display:flex;align-items:center;gap:7px;">
-            ${CAMERA}Take one
-            <input type="file" accept="image/*" capture="user" ${S.photoBusy ? 'disabled' : ''} onchange="uploadPhoto(this)" style="display:none;">
-          </label>` : ''}
+          ${prefersNativeCapture()
+            ? `<label class="btn ghost" style="cursor:pointer;padding:7px 14px;font-size:12.5px;display:flex;align-items:center;gap:7px;">
+                ${CAMERA}Take a photo
+                <input type="file" accept="image/*" capture="user" ${S.photoBusy ? 'disabled' : ''}
+                  onchange="uploadPhoto(this)" style="display:none;">
+              </label>`
+            : `<button type="button" class="btn ghost" ${S.photoBusy ? 'disabled' : ''} onclick="openCamera()"
+                style="padding:7px 14px;font-size:12.5px;display:flex;align-items:center;gap:7px;">
+                ${CAMERA}Take a photo</button>`}
           ${m.photoAt ? `<button type="button" class="rowbtn" style="opacity:1;" ${S.photoBusy ? 'disabled' : ''} onclick="removePhoto()">Remove</button>` : ''}
         </div>
         <span style="font-size:11.5px;color:var(--faint);">Optional. Squared and resized on your device before it is sent.</span>
@@ -2631,6 +2711,25 @@ function vPortalAuth() {
 
 /* ---------- modal + router ---------- */
 function modalHtml() {
+  if (S.modal === 'camera') {
+    return `<div class="scrim" onclick="if(event.target===this)closeCamera()">
+      <div class="modal" role="dialog" aria-modal="true" aria-label="Take a photo" style="max-width:420px;">
+        <div style="display:flex;flex-direction:column;gap:7px;">
+          <h2 class="serif" style="margin:0;font-size:24px;font-weight:400;letter-spacing:-.01em;">Take a photo</h2>
+          <p style="margin:0;font-size:13px;color:var(--ink-soft);">Squared and resized here before anything is sent.</p>
+        </div>
+        <div style="width:100%;aspect-ratio:1;background:var(--sunk);border:1px solid var(--rule-2);overflow:hidden;
+          border-radius:50%;display:flex;align-items:center;justify-content:center;">
+          <video id="cam-video" playsinline muted autoplay
+            style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);"></video>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;">
+          <button class="btn" onclick="takePhoto()">Take photo</button>
+          <button class="btn ghost" onclick="closeCamera()">Cancel</button>
+        </div>
+      </div>
+    </div>`;
+  }
   if (S.modal !== 'invite') return '';
   const after = Math.max(0, (S.me ? S.me.tokenBalance : 1) - 1);
   return `<div class="scrim" onclick="if(event.target===this)closeModal()">
@@ -2813,6 +2912,13 @@ function render() {
   document.getElementById('layer').innerHTML = modalHtml() + versionTip()
     + (S.toast ? `<div class="toast">${esc(S.toast)}</div>` : '');
 
+  // render() rebuilds the layer, so a live camera loses the element its stream
+  // was attached to. Reattach rather than reopening the device.
+  if (S.cameraStream) {
+    const v = document.getElementById('cam-video');
+    if (v && !v.srcObject) { v.srcObject = S.cameraStream; v.play().catch(() => {}); }
+  }
+
   // Focus the one field the user is obviously here to fill. render() replaces
   // the DOM wholesale, so the HTML autofocus attribute never fires on a
   // re-render — the focus has to be reapplied each time. Guarded so it does not
@@ -2849,6 +2955,7 @@ addEventListener('click', function (e) {
 });
 addEventListener('keydown', function (e) {
   if (e.key === 'Escape' && S.userMenu) { S.userMenu = false; render(); }
+  if (e.key === 'Escape' && S.modal === 'camera') closeCamera();
 });
 
 addEventListener('hashchange', render);

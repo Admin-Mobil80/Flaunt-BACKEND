@@ -118,8 +118,23 @@ function favicon(bg) {
 }
 
 const TAB = {
-  portal: { title: 'Flaunt', icon: favicon('#6E2B2B') },
-  bms: { title: 'Flaunt BMS', icon: favicon('#2B4A6E') },
+  portal: {
+    title: 'Flaunt',
+    icon: favicon('#6E2B2B'),
+    // What a cold visitor and a pasted link get. The tab keeps the bare name;
+    // a share card has room to say what the name does not.
+    ogTitle: 'Flaunt — a professional network you can finish reading',
+    tagline: 'A professional network you can finish reading.',
+    url: 'https://flaunt.network',
+  },
+  bms: {
+    title: 'Flaunt BMS',
+    icon: favicon('#2B4A6E'),
+    ogTitle: 'Flaunt BMS',
+    // The console is staff-only and noindex; it advertises nothing.
+    tagline: 'Administrative console for Flaunt.',
+    url: 'https://bms.flaunt.network',
+  },
 };
 
 const NOTICE = {
@@ -143,7 +158,10 @@ for (const app of ['portal', 'bms']) {
     .replace('__PHOTO_BASE__', PHOTO_BASE)
     .replace('__BUILD_ID__', BUILD_ID)
     .replace('__TITLE__', TAB[app].title)
-    .replace('__FAVICON__', TAB[app].icon);
+    .replace('__FAVICON__', TAB[app].icon)
+    .replaceAll('__TAGLINE__', TAB[app].tagline)
+    .replaceAll('__OG_TITLE__', TAB[app].ogTitle)
+    .replaceAll('__SITE_URL__', TAB[app].url);
 
   // Search engines must not index a service that cannot yet accept anyone.
   // The CloudFront response-headers policy sets X-Robots-Tag too; this is the
