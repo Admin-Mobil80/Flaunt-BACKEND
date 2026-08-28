@@ -134,7 +134,6 @@ export class ApiStack extends Stack {
     for (const field of ['adminUsers', 'adminStats', 'adminInvitations', 'adminPayments', 'adminPricingConfig', 'adminPaymentConfig']) {
       adminDs.createResolver(`Query${field}`, { typeName: 'Query', fieldName: field });
     }
-    adminDs.createResolver('MutationadminAdjustTokens', { typeName: 'Mutation', fieldName: 'adminAdjustTokens' });
     adminDs.createResolver('MutationadminSetTokensPerBundle', { typeName: 'Mutation', fieldName: 'adminSetTokensPerBundle' });
     adminDs.createResolver('MutationadminSetPaymentMode', { typeName: 'Mutation', fieldName: 'adminSetPaymentMode' });
     adminDs.createResolver('MutationadminSetSignupTokens', { typeName: 'Mutation', fieldName: 'adminSetSignupTokens' });

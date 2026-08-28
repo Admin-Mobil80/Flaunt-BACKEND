@@ -914,13 +914,6 @@ async function gotoUserPage(page) {
   finally { S.usersLoading = false; render(); }
 }
 
-async function adjustTokens(userId, delta) {
-  try {
-    await gql(`mutation Adj($u:ID!,$d:Int!){ adminAdjustTokens(userId:$u, delta:$d){ userId tokenBalance } }`,
-      { u: userId, d: delta });
-    await loadBms();
-  } catch (e) { toast(e.message); }
-}
 
 /**
  * Switching to live means real cards are charged, so it asks first. Switching
@@ -1005,11 +998,7 @@ function vBmsUsers() {
     <td class="mono" style="font-size:13px;font-weight:600;">${u.tokenBalance}</td>
     <td class="mono" style="font-size:12px;color:var(--bms-soft);">${u.connectionCount}</td>
     <td class="mono" style="font-size:11.5px;color:var(--bms-mute);">${esc(String(u.createdAt).slice(0,10))}</td>
-    <td><span style="display:flex;align-items:center;gap:5px;">
-      <button class="step" onclick="adjustTokens('${u.userId}',-1)" aria-label="Remove a token from ${esc(u.name)}">&minus;</button>
-      <span class="mono" style="width:46px;height:24px;border:1px solid var(--bms-rule-2);display:inline-flex;align-items:center;justify-content:center;font-size:12px;">${u.tokenBalance}</span>
-      <button class="step" onclick="adjustTokens('${u.userId}',1)" aria-label="Add a token for ${esc(u.name)}">+</button>
-    </span></td></tr>`).join('');
+</tr>`).join('');
 
 
   const page = S.userPage || 0;
@@ -1043,7 +1032,7 @@ function vBmsUsers() {
     </div>
 
     ${S.users.length ? `<div class="tblwrap"><table>
-      <thead><tr><th>Name</th><th>Primary email</th><th>Country</th><th>Tokens</th><th>Connections</th><th>Joined</th><th>Adjust balance</th></tr></thead>
+      <thead><tr><th>Name</th><th>Primary email</th><th>Country</th><th>Tokens</th><th>Connections</th><th>Joined</th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>` : `<div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:30px;font-size:13px;color:var(--bms-mute);">No accounts yet. The first sign-up on flaunt.network will appear here.</div>`}
 

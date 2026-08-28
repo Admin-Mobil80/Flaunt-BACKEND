@@ -270,60 +270,6 @@ async function adminInvitations(status?: string) {
     });
 }
 
-/**
- * Manual balance override (§4.2). Atomic and audited: the same ADD used
- * everywhere else, guarded so a decrement cannot push anyone negative, and
- * written to the user's ledger with the admin as the actor so the adjustment
- * is never anonymous.
- */
-async function adminAdjustTokens(admin: string, userId: string, delta: number, reason?: string) {
-  if (!Number.isInteger(delta) || delta === 0) throw new Error('Adjustment must be a non-zero whole number.');
-  const now = new Date().toISOString();
-
-  const condition = delta < 0
-    ? 'attribute_exists(PK) AND tokenBalance >= :min'
-    : 'attribute_exists(PK)';
-  const values: any = { ':d': delta };
-  if (delta < 0) values[':min'] = Math.abs(delta);
-
-  try {
-    await ddb.send(new TransactWriteCommand({
-      TransactItems: [
-        {
-          Update: {
-            TableName: TABLE_NAME,
-            Key: k.user(userId),
-            UpdateExpression: 'ADD tokenBalance :d',
-            ConditionExpression: condition,
-            ExpressionAttributeValues: values,
-          },
-        },
-        {
-          Put: {
-            TableName: TABLE_NAME,
-            Item: {
-              ...k.transaction(userId, now),
-              entityType: 'TXN',
-              delta,
-              reason: k.TXN_REASON.ADMIN_OVERRIDE,
-              note: reason ?? null,
-              actorId: admin,
-              createdAt: now,
-            },
-          },
-        },
-      ],
-    }));
-  } catch (err: any) {
-    if (err?.name === 'TransactionCanceledException') {
-      throw new Error('That would take the balance below zero.');
-    }
-    throw err;
-  }
-
-  const [u] = await adminUsersFor(userId);
-  return u;
-}
 
 async function adminUsersFor(userId: string) {
   const { Item: p } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(userId) }));
@@ -475,7 +421,6 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'adminSetPaymentMode': return adminSetPaymentMode(admin, args.mode);
     case 'adminSetTokensPerBundle': return adminSetTokensPerBundle(admin, args.tokens);
     case 'adminSetSignupTokens': return adminSetSignupTokens(admin, args.tokens);
-    case 'adminAdjustTokens': return adminAdjustTokens(admin, args.userId, args.delta, args.reason);
     default: throw new Error(`Unknown field ${field}`);
   }
 };
