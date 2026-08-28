@@ -177,6 +177,14 @@ export const gsi3UserDirectory = (country: string, createdAt: string, userId: st
 });
 
 /** Sort-key prefixes for begins_with queries. */
+/** A staff account for the admin console, keyed by their verified email. */
+export const adminAccount = (email: string) => ({
+  PK: `ADMIN#${normalizeEmail(email)}`,
+  SK: 'METADATA',
+});
+
+export const ADMIN_ROLES = { OWNER: 'OWNER', STAFF: 'STAFF' } as const;
+
 export const PREFIX = {
   CONNECTION: 'CONNECTION#',
   TXN: 'TXN#',

@@ -83,6 +83,11 @@ type Invitation @aws_cognito_user_pools {
   expiresAt: Int
   daysLeft: Int
   tokenOutcome: String!
+  # Set on introduction requests: who you asked to meet, and through whom.
+  targetName: String
+  gatekeeperName: String
+  # SENT by the caller, or RECEIVED by them.
+  direction: String
 }
 
 # Amounts are minor units — paise or cents — because that is what Razorpay
@@ -198,6 +203,16 @@ type AdminUserPage @aws_cognito_user_pools {
   hasMore: Boolean!
 }
 
+type AdminStaff @aws_cognito_user_pools {
+  email: String!
+  name: String
+  # OWNER is set by deployment and cannot be removed from the console.
+  role: String!
+  status: String!
+  addedBy: String
+  createdAt: String
+}
+
 type AdminStats @aws_cognito_user_pools {
   totalUsers: Int!
   usersIndia: Int!
@@ -221,6 +236,8 @@ type Query {
   # Introduction requests waiting on the caller's approval, as the gatekeeper.
   gatekeeperRequests: [IntroductionRequest!]!
   myInvitations: [Invitation!]!
+  # Invitations addressed to the caller, waiting on them.
+  incomingInvitations: [Invitation!]!
   tokenPrice: BundlePrice!
   # "test" or "live" — the app says which, rather than implying real money moves.
   paymentMode: String!
@@ -238,6 +255,9 @@ type Query {
   adminInvitations(status: String): [Invitation!]! @aws_cognito_user_pools
   # mode is "test", "live", or "all".
   adminPayments(limit: Int, offset: Int, mode: String): AdminPaymentPage! @aws_cognito_user_pools
+  adminStaff: [AdminStaff!]! @aws_cognito_user_pools
+  # The caller's own access, so the console can hide what they cannot do.
+  adminWhoAmI: AdminStaff! @aws_cognito_user_pools
   adminPricingConfig: PricingConfig! @aws_cognito_user_pools
   adminPaymentConfig: PaymentConfig! @aws_cognito_user_pools
 }
@@ -278,6 +298,9 @@ type Mutation {
   ): Me!
   # How many tokens a bundle contains. The amount charged does not change —
   # only what it buys. Restricted to 25, 50, 75 or 100.
+  # Owner only. Creates their sign-in account and grants console access.
+  adminAddStaff(email: String!, name: String): AdminStaff! @aws_cognito_user_pools
+  adminRemoveStaff(email: String!): Boolean! @aws_cognito_user_pools
   adminSetTokensPerBundle(tokens: Int!): PricingConfig! @aws_cognito_user_pools
   # How many tokens a new account is granted. 1–10.
   adminSetSignupTokens(tokens: Int!): PricingConfig! @aws_cognito_user_pools

@@ -1,5 +1,5 @@
 import type { AppSyncResolverEvent } from 'aws-lambda';
-import { QueryCommand, GetCommand, TransactWriteCommand, UpdateCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
+import { QueryCommand, GetCommand, TransactWriteCommand, UpdateCommand, PutCommand, BatchGetCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'node:crypto';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import { priceForCountry, formatMinor, coerceBundleSize, coercePaymentMode } from '../../shared/pricing';
@@ -145,7 +145,49 @@ async function myInvitations(userId: string) {
     ExpressionAttributeValues: { ':pk': `USER#${userId}`, ':sk': k.PREFIX.INVITE },
     ScanIndexForward: false,
   }));
-  return Items.map(shapeInvite);
+
+  // An introduction request is only meaningful with names on it: an email
+  // address does not tell you who you asked to meet, or who you asked.
+  const ids = [...new Set(Items.flatMap((i: any) =>
+    i.type === 'INTRO' ? [i.targetUserId, i.gatekeeperId].filter(Boolean) : []))] as string[];
+  const people = ids.length ? await hydrateMany(ids) : new Map();
+
+  return Items.map((it: any) => ({
+    ...shapeInvite(it),
+    targetName: it.targetUserId ? (people.get(it.targetUserId)?.name ?? null) : null,
+    gatekeeperName: it.gatekeeperId ? (people.get(it.gatekeeperId)?.name ?? null) : null,
+    direction: 'SENT',
+  }));
+}
+
+/**
+ * Invitations addressed to the caller — the other half of their inbox.
+ *
+ * These were never queried anywhere: myInvitations reads the sender index, so
+ * a member could see every invitation they had sent and none of the ones
+ * waiting on them. Keyed by verified email, so it follows the address rather
+ * than the account.
+ */
+async function incomingInvitations(userId: string) {
+  const { Item: me } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(userId) }));
+  const email = me?.primaryEmail;
+  if (!email) return [];
+  const { Items = [] } = await ddb.send(new QueryCommand({
+    TableName: TABLE_NAME,
+    IndexName: 'GSI2',
+    KeyConditionExpression: 'GSI2PK = :pk',
+    ExpressionAttributeValues: { ':pk': `EMAIL#${String(email).trim().toLowerCase()}` },
+    ScanIndexForward: false,
+    Limit: 100,
+  }));
+  const senderIds = [...new Set(Items.map((i: any) => i.senderId).filter(Boolean))] as string[];
+  const senders = senderIds.length ? await hydrateMany(senderIds) : new Map();
+  return Items.map((it: any) => ({
+    ...shapeInvite(it, senders.get(it.senderId)),
+    targetName: null,
+    gatekeeperName: null,
+    direction: 'RECEIVED',
+  }));
 }
 
 /** Bundle size is set from BMS; absent or invalid falls back to the default. */
@@ -774,6 +816,24 @@ async function connectionsOf(callerId: string, contactId: string) {
 const SECOND_DEGREE_FAN_OUT = 60;
 
 /**
+ * Profiles for many ids at once. BatchGet caps at 100 keys per call, so this
+ * chunks and runs the chunks together rather than one read per person.
+ */
+async function hydrateMany(ids: string[]): Promise<Map<string, any>> {
+  const out = new Map<string, any>();
+  const chunks: string[][] = [];
+  for (let i = 0; i < ids.length; i += 100) chunks.push(ids.slice(i, i + 100));
+  const results = await Promise.all(chunks.map((c) =>
+    ddb.send(new BatchGetCommand({ RequestItems: { [TABLE_NAME]: { Keys: c.map((id) => k.user(id)) } } }))));
+  for (const r of results as any[]) {
+    for (const item of (r.Responses?.[TABLE_NAME] ?? [])) {
+      out.set(String(item.PK).replace('USER#', ''), item);
+    }
+  }
+  return out;
+}
+
+/**
  * Everyone one step beyond the caller's direct contacts.
  *
  * This is the one genuinely expensive read in the app: it queries each direct
@@ -823,18 +883,40 @@ async function secondDegree(userId: string, limit = 50, offset = 0, q?: string) 
    * page boundary has to be stable between requests or a member would see
    * someone twice while never seeing someone else at all.
    */
-  const ids = [...found.keys()].sort();
+  let ids = [...found.keys()].sort();
+  let matchedTotal = total;
+
+  /**
+   * A search has to see the whole set, not the page.
+   *
+   * The client can only filter what it was sent, which for a member with
+   * thousands of second-degree contacts is fifty rows — so a name three pages
+   * down cannot be found at all. Names are not part of the derived set, so a
+   * search hydrates every candidate once in order to filter on them. That is
+   * the expensive path, which is why it runs only when something was typed.
+   */
+  const needle = String(q ?? '').trim().toLowerCase();
+  if (needle) {
+    const all = await hydrateMany(ids);
+    ids = ids.filter((id) => {
+      const p = all.get(id);
+      if (!p) return false;
+      return [p.name, p.designation, p.organisation]
+        .filter(Boolean).some((f: any) => String(f).toLowerCase().includes(needle));
+    }).sort((x, y) => String(all.get(x)?.name ?? '').localeCompare(String(all.get(y)?.name ?? '')));
+    matchedTotal = ids.length;
+  }
+
   const page = ids.slice(offset, offset + limit);
-  if (page.length === 0) return { items: [], total, hasMore: false };
+  if (page.length === 0) return { items: [], total: matchedTotal, hasMore: false };
 
   const viaIds = [...new Set(page.map((id) => found.get(id)!))];
-  const [people, vias] = await Promise.all([
-    Promise.all(page.map((id) => ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(id) })))),
-    Promise.all(viaIds.map(async (id) => ({
-      id, item: (await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.user(id) }))).Item,
-    }))),
-  ]);
-  const viaName = new Map(vias.map((v) => [v.id, v.item?.name ?? null]));
+  // One batched read for the page and its introducers together, rather than a
+  // separate GetItem per person — a full page was fifty round trips plus one
+  // per introducer, which is most of what made this screen feel slow.
+  const fetched = await hydrateMany([...new Set([...page, ...viaIds])]);
+  const people = page.map((id) => ({ Item: fetched.get(id) }));
+  const viaName = new Map(viaIds.map((id) => [id, fetched.get(id)?.name ?? null]));
 
   const items = page.map((id, i) => {
     const p = people[i].Item ?? {};
@@ -857,7 +939,7 @@ async function secondDegree(userId: string, limit = 50, offset = 0, q?: string) 
     };
   }).sort((x, y) => String(x.name).localeCompare(String(y.name)));
 
-  return { items, total, hasMore: offset + page.length < total };
+  return { items, total: matchedTotal, hasMore: offset + page.length < matchedTotal };
 }
 
 /**
@@ -1201,6 +1283,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'approveIntroduction': return approveIntroduction(userId, args.inviteId, args.note);
     case 'declineIntroduction': return declineIntroduction(userId, args.inviteId);
     case 'myInvitations': return myInvitations(userId);
+    case 'incomingInvitations': return incomingInvitations(userId);
     case 'tokenPrice': return tokenPrice(userId);
     case 'paymentMode': return paymentMode();
     case 'invitation': return invitation(userId, args.inviteId);

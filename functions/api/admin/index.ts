@@ -1,5 +1,8 @@
 import type { AppSyncResolverEvent } from 'aws-lambda';
-import { QueryCommand, GetCommand, ScanCommand, TransactWriteCommand, PutCommand, BatchGetCommand } from '@aws-sdk/lib-dynamodb';
+import { QueryCommand, GetCommand, ScanCommand, TransactWriteCommand, PutCommand, BatchGetCommand, DeleteCommand } from '@aws-sdk/lib-dynamodb';
+import {
+  CognitoIdentityProviderClient, AdminCreateUserCommand, AdminDeleteUserCommand,
+} from '@aws-sdk/client-cognito-identity-provider';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import * as k from '../../shared/keys';
 import {
@@ -11,6 +14,43 @@ import {
 const ROOT_ADMIN_EMAIL = (process.env.ROOT_ADMIN_EMAIL ?? '').toLowerCase();
 const BMS_POOL_ID = process.env.BMS_USER_POOL_ID ?? '';
 
+const cognito = new CognitoIdentityProviderClient({});
+
+/**
+ * A sign-in account in the BMS pool.
+ *
+ * MessageAction SUPPRESS because Cognito's own invitation email carries a
+ * temporary password, and this console has no passwords — access is by
+ * emailed code. Sending it would tell a new colleague to use a credential
+ * that does not work.
+ */
+async function createBmsUser(email: string) {
+  if (!BMS_POOL_ID) return;
+  try {
+    await cognito.send(new AdminCreateUserCommand({
+      UserPoolId: BMS_POOL_ID,
+      Username: email,
+      MessageAction: 'SUPPRESS',
+      UserAttributes: [
+        { Name: 'email', Value: email },
+        { Name: 'email_verified', Value: 'true' },
+      ],
+    }));
+  } catch (err: any) {
+    // Already present is the desired end state, not a failure.
+    if (err?.name !== 'UsernameExistsException') throw err;
+  }
+}
+
+async function deleteBmsUser(email: string) {
+  if (!BMS_POOL_ID) return;
+  try {
+    await cognito.send(new AdminDeleteUserCommand({ UserPoolId: BMS_POOL_ID, Username: email }));
+  } catch (err: any) {
+    if (err?.name !== 'UserNotFoundException') throw err;
+  }
+}
+
 /**
  * Being authenticated is not being an admin.
  *
@@ -19,13 +59,103 @@ const BMS_POOL_ID = process.env.BMS_USER_POOL_ID ?? '';
  * against verified claims rather than arguments: the token must come from the
  * BMS pool, and the identity must be the root admin (PRD §4.1).
  */
-function assertAdmin(event: any): string {
+async function assertAdmin(event: any): Promise<{ email: string; role: string }> {
   const claims = event?.identity?.claims ?? {};
   const iss = String(claims.iss ?? '');
   const email = String(claims.email ?? '').toLowerCase();
   if (BMS_POOL_ID && !iss.endsWith(BMS_POOL_ID)) throw new Error('Unauthorized');
-  if (!email || email !== ROOT_ADMIN_EMAIL) throw new Error('Unauthorized');
-  return email;
+  if (!email) throw new Error('Unauthorized');
+
+  // The owner is defined by deployed configuration, not by a database row, so
+  // no console action can remove the last person able to use the console.
+  if (email === ROOT_ADMIN_EMAIL) return { email, role: k.ADMIN_ROLES.OWNER };
+
+  const { Item } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.adminAccount(email) }));
+  if (!Item || Item.status !== 'ACTIVE') throw new Error('Unauthorized');
+  return { email, role: String(Item.role ?? k.ADMIN_ROLES.STAFF) };
+}
+
+/** Only the owner may change who else has access. */
+function assertOwner(admin: { role: string }) {
+  if (admin.role !== k.ADMIN_ROLES.OWNER) throw new Error('Only the owner can change staff access');
+}
+
+async function adminStaff() {
+  const items: any[] = [];
+  let ExclusiveStartKey: any = undefined;
+  do {
+    const r: any = await ddb.send(new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: 'entityType = :t',
+      ExpressionAttributeValues: { ':t': 'ADMIN' },
+      ExclusiveStartKey,
+    }));
+    items.push(...(r.Items ?? []));
+    ExclusiveStartKey = r.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+
+  // The owner is configuration rather than a row, so it is added here — the
+  // list would otherwise show every staff member and not the person who can
+  // actually manage them.
+  const owner = {
+    email: ROOT_ADMIN_EMAIL, name: null, role: k.ADMIN_ROLES.OWNER,
+    status: 'ACTIVE', addedBy: null, createdAt: null,
+  };
+  return [owner, ...items
+    .map((i: any) => ({
+      email: String(i.PK).replace('ADMIN#', ''),
+      name: i.name ?? null,
+      role: i.role ?? k.ADMIN_ROLES.STAFF,
+      status: i.status ?? 'ACTIVE',
+      addedBy: i.addedBy ?? null,
+      createdAt: i.createdAt ?? null,
+    }))
+    .filter((a) => a.email !== ROOT_ADMIN_EMAIL)
+    .sort((a, b) => String(a.email).localeCompare(String(b.email)))];
+}
+
+/**
+ * Grants console access to an email address.
+ *
+ * Two things have to happen together: a Cognito account in the BMS pool so
+ * they can be sent a sign-in code at all, and a row here so the resolver will
+ * authorise them. The row is written first — a Cognito user with no row can do
+ * nothing, whereas a row with no Cognito user is access that cannot be used
+ * and looks like a bug.
+ */
+async function adminAddStaff(admin: { email: string; role: string }, emailRaw: string, name?: string) {
+  assertOwner(admin);
+  const email = String(emailRaw ?? '').trim().toLowerCase();
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) throw new Error('Enter a valid email address');
+  if (email === ROOT_ADMIN_EMAIL) throw new Error('That address is already the owner');
+
+  const createdAt = new Date().toISOString();
+  try {
+    await ddb.send(new PutCommand({
+      TableName: TABLE_NAME,
+      Item: {
+        ...k.adminAccount(email),
+        entityType: 'ADMIN', role: k.ADMIN_ROLES.STAFF, status: 'ACTIVE',
+        name: name?.trim() || null, addedBy: admin.email, createdAt,
+      },
+      ConditionExpression: 'attribute_not_exists(PK)',
+    }));
+  } catch (err: any) {
+    if (err?.name === 'ConditionalCheckFailedException') throw new Error('That address already has access');
+    throw err;
+  }
+
+  await createBmsUser(email);
+  return { email, name: name?.trim() || null, role: k.ADMIN_ROLES.STAFF, status: 'ACTIVE', addedBy: admin.email, createdAt };
+}
+
+async function adminRemoveStaff(admin: { email: string; role: string }, emailRaw: string) {
+  assertOwner(admin);
+  const email = String(emailRaw ?? '').trim().toLowerCase();
+  if (email === ROOT_ADMIN_EMAIL) throw new Error('The owner cannot be removed');
+  await ddb.send(new DeleteCommand({ TableName: TABLE_NAME, Key: k.adminAccount(email) }));
+  await deleteBmsUser(email);
+  return true;
 }
 
 /**
@@ -423,7 +553,7 @@ async function adminSetSignupTokens(admin: string, tokens: number) {
 }
 
 export const handler = async (event: AppSyncResolverEvent<any>) => {
-  const admin = assertAdmin(event);
+  const admin = await assertAdmin(event);
   const field = (event as any).info?.fieldName;
   const args = (event.arguments ?? {}) as any;
 
@@ -431,12 +561,16 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'adminUsers': return adminUsers(args.limit ?? 50, args.offset ?? 0, args.q);
     case 'adminStats': return adminStats();
     case 'adminInvitations': return adminInvitations(args.status);
+    case 'adminStaff': return adminStaff();
+    case 'adminAddStaff': return adminAddStaff(admin, args.email, args.name);
+    case 'adminRemoveStaff': return adminRemoveStaff(admin, args.email);
+    case 'adminWhoAmI': return { email: admin.email, name: null, role: admin.role, status: 'ACTIVE', addedBy: null, createdAt: null };
     case 'adminPayments': return adminPayments(args.limit ?? 50, args.offset ?? 0, args.mode);
     case 'adminPricingConfig': return adminPricingConfig();
     case 'adminPaymentConfig': return adminPaymentConfig();
-    case 'adminSetPaymentMode': return adminSetPaymentMode(admin, args.mode);
-    case 'adminSetTokensPerBundle': return adminSetTokensPerBundle(admin, args.tokens);
-    case 'adminSetSignupTokens': return adminSetSignupTokens(admin, args.tokens);
+    case 'adminSetPaymentMode': return adminSetPaymentMode(admin.email, args.mode);
+    case 'adminSetTokensPerBundle': return adminSetTokensPerBundle(admin.email, args.tokens);
+    case 'adminSetSignupTokens': return adminSetSignupTokens(admin.email, args.tokens);
     default: throw new Error(`Unknown field ${field}`);
   }
 };

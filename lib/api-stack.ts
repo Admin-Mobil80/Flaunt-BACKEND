@@ -68,6 +68,17 @@ export class ApiStack extends Stack {
       runtime: lambda.Runtime.NODEJS_24_X,
       bundling: { minify: true, sourceMap: false, target: 'node24' },
       timeout: Duration.seconds(15),
+      /**
+       * Lambda scales CPU with memory, so the default 128MB buys a fraction of
+       * a vCPU. These resolvers fan out across a member's whole network and
+       * were running at 110MB of 128 — starved of processor and one large
+       * network away from an out-of-memory kill.
+       *
+       * This is close to cost-neutral: duration falls roughly in proportion to
+       * the memory added, so the GB-seconds come out about the same and the
+       * request is several times faster.
+       */
+      memorySize: 512,
     };
 
     const portalFn = new lambdaNode.NodejsFunction(this, 'PortalApiFn', {
@@ -114,10 +125,20 @@ export class ApiStack extends Stack {
     });
     table.grantReadWriteData(adminFn);
 
+    /**
+     * Staff management needs to create and delete sign-in accounts in the BMS
+     * pool. Scoped to that pool only, and to those two calls — nothing here
+     * should be able to touch the member pool or read a user's attributes.
+     */
+    adminFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['cognito-idp:AdminCreateUser', 'cognito-idp:AdminDeleteUser'],
+      resources: [bmsUserPool.userPoolArn],
+    }));
+
     const portalDs = this.api.addLambdaDataSource('PortalDataSource', portalFn);
     const adminDs = this.api.addLambdaDataSource('AdminDataSource', adminFn);
 
-    for (const field of ['me', 'myConnections', 'secondDegree', 'myInvitations', 'tokenPrice', 'paymentMode', 'searchPeople', 'invitation', 'profile', 'connectionsOf', 'gatekeeperRequests']) {
+    for (const field of ['me', 'myConnections', 'secondDegree', 'myInvitations', 'incomingInvitations', 'tokenPrice', 'paymentMode', 'searchPeople', 'invitation', 'profile', 'connectionsOf', 'gatekeeperRequests']) {
       portalDs.createResolver(`Query${field}`, { typeName: 'Query', fieldName: field });
     }
     portalDs.createResolver('MutationsendInvitation', { typeName: 'Mutation', fieldName: 'sendInvitation' });
@@ -131,9 +152,11 @@ export class ApiStack extends Stack {
       portalDs.createResolver(`Mutation${f}`, { typeName: 'Mutation', fieldName: f });
     }
 
-    for (const field of ['adminUsers', 'adminStats', 'adminInvitations', 'adminPayments', 'adminPricingConfig', 'adminPaymentConfig']) {
+    for (const field of ['adminUsers', 'adminStats', 'adminInvitations', 'adminPayments', 'adminStaff', 'adminWhoAmI', 'adminPricingConfig', 'adminPaymentConfig']) {
       adminDs.createResolver(`Query${field}`, { typeName: 'Query', fieldName: field });
     }
+    adminDs.createResolver('MutationadminAddStaff', { typeName: 'Mutation', fieldName: 'adminAddStaff' });
+    adminDs.createResolver('MutationadminRemoveStaff', { typeName: 'Mutation', fieldName: 'adminRemoveStaff' });
     adminDs.createResolver('MutationadminSetTokensPerBundle', { typeName: 'Mutation', fieldName: 'adminSetTokensPerBundle' });
     adminDs.createResolver('MutationadminSetPaymentMode', { typeName: 'Mutation', fieldName: 'adminSetPaymentMode' });
     adminDs.createResolver('MutationadminSetSignupTokens', { typeName: 'Mutation', fieldName: 'adminSetSignupTokens' });

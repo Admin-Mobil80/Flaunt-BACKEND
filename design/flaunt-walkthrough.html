@@ -554,18 +554,58 @@ async function openProfile(userId) {
   render();
 }
 
+/**
+ * Statuses are stored as machine constants; nobody should have to read
+ * PENDING_GATEKEEPER. It also overflowed its column.
+ */
+function statusLabel(st) {
+  return ({
+    PENDING: 'Waiting',
+    PENDING_GATEKEEPER: 'With introducer',
+    INTRO_PENDING: 'With them',
+    ACCEPTED: 'Accepted',
+    REJECTED: 'Declined',
+    GATEKEEPER_DENIED: 'Not passed on',
+    EXPIRED: 'Expired',
+    CANCELLED: 'Withdrawn',
+  })[st] || String(st || '').replace(/_/g, ' ').toLowerCase();
+}
+
 function vGatekeeperInbox() {
   if (S.gatekeeper === null && !S.gkLoading && !S.gkError) loadGatekeeper();
   const rs = S.gatekeeper || [];
+  // The other half: introductions this member asked for. They were previously
+  // filed under Invitations, where they read as invitations to strangers.
+  const mine = (S.invites || []).filter((r) => r.type === 'INTRO');
+  const tone = (st) => ['PENDING','PENDING_GATEKEEPER','INTRO_PENDING'].indexOf(st) > -1
+    ? {bd:'var(--warn-line)',bg:'var(--warn-wash)',fg:'var(--warn)'}
+    : st === 'ACCEPTED' ? {bd:'#CFC6B6',bg:'#F4F0E8',fg:'#6B6459'}
+    : {bd:'var(--good-line)',bg:'var(--good-wash)',fg:'var(--good)'};
+
   return topbar('gatekeeper') + `<div class="wrap"><div class="col page">
     <div style="display:flex;flex-direction:column;gap:7px;">
-      <h1 class="big">Introduction requests</h1>
-      <p style="margin:0;font-size:14px;color:var(--ink-soft);">People you know asking to be introduced to other people you know.</p>
+      <h1 class="big">Introductions</h1>
+      <p style="margin:0;font-size:14px;color:var(--ink-soft);">Introductions you have asked for, and introductions people have asked of you.</p>
     </div>
+
+    ${mine.length ? `<div style="display:flex;flex-direction:column;gap:10px;">
+      <span class="lbl">You asked for</span>
+      <div class="lrow hide-sm" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1.1fr) 118px minmax(0,120px);border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
+        <span class="lbl">To meet</span><span class="lbl">Through</span><span class="lbl">State</span><span class="lbl">Token</span>
+      </div>
+      ${mine.map((r) => { const t = tone(r.status); return `<div class="lrow" style="grid-template-columns:minmax(0,1.5fr) minmax(0,1.1fr) 118px minmax(0,120px);">
+        <span class="trunc" style="font-family:var(--serif);font-size:15px;">${esc(r.targetName || r.recipientEmail || 'Someone')}</span>
+        <span class="trunc hide-sm" style="font-size:12.5px;color:var(--ink-soft);">${esc(r.gatekeeperName || '—')}</span>
+        <span><span class="chip" style="border-color:${t.bd};background:${t.bg};padding:2px 7px;"><span class="dot" style="background:${t.fg};"></span><span class="lbl" style="color:${t.fg};font-size:9.5px;white-space:nowrap;">${esc(statusLabel(r.status))}</span></span></span>
+        <span class="trunc hide-sm" style="font-size:12px;color:${r.tokenOutcome.indexOf('returned')>-1?'var(--good)':'var(--ink-soft)'};">${esc(r.tokenOutcome)}${r.daysLeft!==null&&r.daysLeft!==undefined?esc(' \u00b7 '+r.daysLeft+'d'):''}</span>
+      </div>`; }).join('')}
+    </div>` : ''}
+
+    ${(mine.length && (rs.length || S.gkLoading)) ? `<span class="lbl" style="margin-top:4px;">Waiting on you</span>` : ''}
     ${S.gkError ? `<p style="font-size:13px;color:var(--bad);">${esc(S.gkError)}</p>` : ''}
     ${S.gkLoading ? `<p style="font-size:13.5px;color:var(--ink-soft);">Loading…</p>` : ''}
-    ${!S.gkLoading && rs.length === 0 ? emptyState('Nothing waiting on you',
-      'When someone you know asks to be introduced to another of your connections, it appears here.', '') : ''}
+    ${!S.gkLoading && rs.length === 0 && mine.length === 0 ? emptyState('No introductions yet',
+      'Ask to be introduced from any second-degree profile, and requests people make of you appear here.', '') : ''}
     ${rs.map((r) => `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:22px 24px;display:flex;flex-direction:column;gap:16px;">
       <span class="serif" style="font-size:19px;line-height:1.35;">${esc(r.requesterName)} would like an introduction to ${esc(r.targetName)}.</span>
       <div class="grid2">
@@ -681,10 +721,11 @@ function vProfile(id) {
     ${second && (p.viaOptions || []).length ? `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:24px 26px;display:flex;flex-direction:column;gap:18px;">
       <div style="display:flex;flex-direction:column;gap:6px;">
         <span class="lbl">Request an introduction</span>
-        <span style="font-size:13.5px;color:var(--ink-2);">You and ${esc((p.name || '').split(' ')[0])} both know ${
-          p.viaOptions.length === 1 ? `<strong style="font-weight:500;">${esc(p.viaOptions[0].name)}</strong>`
-            : `<strong style="font-weight:500;">${p.viaOptions.length} people</strong>`}.</span>
-        ${p.viaOptions.length > 1 ? `<span style="font-size:12.5px;color:var(--ink-soft);">Ask whichever of them knows ${esc((p.name || '').split(' ')[0])} best &mdash; only the one you pick is contacted.</span>` : ''}
+        <span style="font-size:13.5px;color:var(--ink-2);">${
+          p.viaOptions.length === 1
+            ? `<strong style="font-weight:500;">${esc(p.viaOptions[0].name)}</strong> can introduce you to ${esc((p.name || '').split(' ')[0])}.`
+            : `<strong style="font-weight:500;">${p.viaOptions.length} of your connections</strong> know ${esc((p.name || '').split(' ')[0])} and could introduce you.`}</span>
+        ${p.viaOptions.length > 1 ? `<span style="font-size:12.5px;color:var(--ink-soft);">Pick the one who knows ${esc((p.name || '').split(' ')[0])} best. Only that person is contacted.</span>` : ''}
       </div>
 
       <div style="display:flex;flex-direction:column;">
@@ -743,16 +784,22 @@ function vProfile(id) {
 }
 
 function vInvitations() {
+  // Connection invitations only. An introduction request is a different thing
+  // with a different counterparty, and it has its own destination now.
+  const sent = (S.invites || []).filter((r) => r.type !== 'INTRO');
+  const waitingOnYou = (S.incoming || []).filter((r) =>
+    r.type !== 'INTRO' && ['PENDING','PENDING_GATEKEEPER','INTRO_PENDING'].indexOf(r.status) > -1);
+
   const TABS = [['all','All'],['PENDING','Open'],['ACCEPTED','Accepted'],['REJECTED','Declined'],['EXPIRED','Expired'],['CANCELLED','Cancelled']];
   const tabs = TABS.map(([id,label]) => {
-    const n = id==='all' ? S.invites.length : S.invites.filter((r)=>r.status===id).length;
+    const n = id==='all' ? sent.length : sent.filter((r)=>r.status===id).length;
     const on = S.invFilter===id;
     return `<button onclick="S.invFilter='${id}';render();" aria-current="${on}"
       style="background:none;border:none;border-bottom:1.5px solid ${on?'var(--accent)':'transparent'};color:${on?'var(--ink)':'var(--ink-soft)'};font-weight:${on?500:400};font-size:13px;padding:0 0 10px;display:flex;align-items:center;gap:7px;">
       ${label}<span class="mono" style="font-size:11px;color:var(--faint);">${n}</span></button>`;
   }).join('');
-  const shown = S.invites.filter((r)=>S.invFilter==='all'||r.status===S.invFilter);
-  const refunded = S.invites.filter((r)=>r.tokenOutcome.indexOf('returned')>-1).length;
+  const shown = sent.filter((r)=>S.invFilter==='all'||r.status===S.invFilter);
+  const refunded = sent.filter((r)=>r.tokenOutcome.indexOf('returned')>-1).length;
 
   const tone = (st) => st==='ACCEPTED' ? {bd:'#CFC6B6',bg:'#F4F0E8',fg:'#6B6459'}
     : (st==='REJECTED'||st==='EXPIRED'||st==='GATEKEEPER_DENIED')
@@ -765,7 +812,7 @@ function vInvitations() {
     const open_ = ['PENDING','PENDING_GATEKEEPER','INTRO_PENDING'].indexOf(r.status) > -1;
     return `<div class="lrow" style="grid-template-columns:minmax(0,1.6fr) 118px 96px minmax(0,132px) 74px;">
       <span class="mono trunc" style="font-size:12.5px;" title="${esc(r.recipientEmail)}">${esc(r.recipientEmail)}</span>
-      <span><span class="chip" style="border-color:${t.bd};background:${t.bg};padding:2px 7px;"><span class="dot" style="background:${t.fg};"></span><span class="lbl" style="color:${t.fg};font-size:9.5px;">${esc(r.status)}</span></span></span>
+      <span><span class="chip" style="border-color:${t.bd};background:${t.bg};padding:2px 7px;"><span class="dot" style="background:${t.fg};"></span><span class="lbl" style="color:${t.fg};font-size:9.5px;white-space:nowrap;">${esc(statusLabel(r.status))}</span></span></span>
       <span class="mono hide-sm" style="font-size:11.5px;color:var(--faint);">${esc(String(r.createdAt).slice(0,10))}</span>
       <span class="trunc" style="font-size:12px;color:${back?'var(--good)':'var(--ink-soft)'};font-weight:${back?500:400};">${esc(r.tokenOutcome)}${r.daysLeft!==null&&r.daysLeft!==undefined?esc(' · '+r.daysLeft+'d'):''}</span>
       <span style="display:flex;justify-content:flex-end;">
@@ -780,15 +827,32 @@ function vInvitations() {
       ${refunded ? `<div style="display:flex;align-items:center;gap:8px;color:var(--good);">
         ${RETURN}<span style="font-size:13px;">${refunded} token${refunded===1?'':'s'} returned to you</span></div>` : ''}
     </div>
-    ${S.invites.length ? `<div style="display:flex;gap:22px;border-bottom:1px solid var(--rule-2);flex-wrap:wrap;">${tabs}</div>
+    ${waitingOnYou.length ? `<div style="display:flex;flex-direction:column;gap:10px;">
+      <span class="lbl">Waiting on you</span>
+      <div style="display:flex;flex-direction:column;border:1px solid var(--rule-2);background:var(--raised);">
+        ${waitingOnYou.map((r) => `<div class="lrow" style="grid-template-columns:26px minmax(0,1fr) auto;padding-left:14px;padding-right:14px;">
+          <span class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initialsOf(r.senderName || '?')}</span>
+          <span style="display:flex;flex-direction:column;gap:1px;min-width:0;">
+            <span class="trunc" style="font-family:var(--serif);font-size:15px;">${esc(r.senderName || 'Someone')} invited you to connect</span>
+            ${r.senderDesignation ? `<span class="trunc" style="font-size:12px;color:var(--ink-soft);">${esc(r.senderDesignation)}</span>` : ''}</span>
+          <span style="display:flex;gap:8px;align-items:center;">
+            ${r.daysLeft !== null && r.daysLeft !== undefined ? `<span class="lbl" style="color:var(--faint);">${r.daysLeft}d left</span>` : ''}
+            <button class="rowbtn" style="opacity:1;" onclick="declineInviteInline('${r.inviteId}')">Decline</button>
+            <button class="btn" style="padding:6px 14px;font-size:12.5px;" onclick="acceptInviteInline('${r.inviteId}')">Accept</button>
+          </span></div>`).join('')}
+      </div>
+    </div>` : ''}
+
+    ${sent.length ? `<span class="lbl">Sent by you</span>
+    <div style="display:flex;gap:22px;border-bottom:1px solid var(--rule-2);flex-wrap:wrap;margin-top:-6px;">${tabs}</div>
     <div class="lrow hide-sm" style="grid-template-columns:minmax(0,1.6fr) 118px 96px minmax(0,132px) 74px;border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
       <span class="lbl">Recipient</span><span class="lbl">State</span><span class="lbl">Sent</span><span class="lbl">Token</span><span></span>
     </div>
     <div style="display:flex;flex-direction:column;">${rows || `<p style="margin:24px 0;font-size:13.5px;color:var(--faint);">Nothing in this state.</p>`}</div>`
-    : emptyState('No invitations yet',
+    : (waitingOnYou.length ? '' : emptyState('No invitations yet',
         'Every connection on Flaunt starts with one. Sending costs a token, and you get it back if it is declined or goes unanswered for seven days.',
-        `<button class="btn" onclick="openInvite()">Send an invitation</button>`)}
-    ${S.invites.length ? `<button class="btn" style="align-self:flex-start;" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>` : ''}
+        `<button class="btn" onclick="openInvite()">Send an invitation</button>`))}
+    ${sent.length ? `<button class="btn" style="align-self:flex-start;" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>` : ''}
   </div></div>`;
 }
 
@@ -893,6 +957,8 @@ const Q_ADMIN = `query Admin($o:Int!) {
   adminInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome }
   adminPricingConfig { tokensPerBundle allowedSizes signupTokens signupRange updatedAt updatedBy }
   adminPaymentConfig { mode modes secretName live updatedAt updatedBy }
+  adminStaff { email name role status addedBy createdAt }
+  adminWhoAmI { email role }
 }`;
 
 async function loadBms() {
@@ -905,6 +971,8 @@ async function loadBms() {
     S.adminInvites = d.adminInvitations || [];
     S.pricing = d.adminPricingConfig;
     S.payment = d.adminPaymentConfig;
+    S.staff = d.adminStaff || [];
+    S.whoAmI = d.adminWhoAmI || null;
   } catch (e) { S.dataError = e.message; }
   finally { S.loading = false; render(); }
 }
@@ -964,7 +1032,7 @@ async function setBundleSize(tokens) {
 
 /* ---------- BMS ---------- */
 function bmsShell(active, inner) {
-  const nav = [['users','User ledger'],['invitations','Invitations'],['transactions','Transactions'],['settings','Settings']].map(([k,l]) =>
+  const nav = [['users','User ledger'],['invitations','Invitations'],['transactions','Transactions'],['staff','Staff'],['settings','Settings']].map(([k,l]) =>
     `<button onclick="go('#/bms/${k}')" ${active===k?'aria-current="true"':''}>${l}</button>`).join('');
   return `<div class="bms">
     <header class="bms-top">
@@ -1198,6 +1266,70 @@ function vBmsTx() {
       checkout or a payment whose webhook never reached us. Cross-check the order id in the Razorpay dashboard to tell them apart.</p>`);
 }
 
+async function addStaff() {
+  const email = (document.getElementById('staff-email') || {}).value || '';
+  const name = (document.getElementById('staff-name') || {}).value || '';
+  if (!email.trim()) { toast('Enter an email address.'); return; }
+  S.staffBusy = true; render();
+  try {
+    await gql(`mutation A($e:String!,$n:String){ adminAddStaff(email:$e, name:$n){ email role } }`,
+      { e: email.trim(), n: name.trim() || null });
+    toast(`${email.trim()} can now sign in to the console.`);
+    await loadBms();
+  } catch (e) { toast(e.message); }
+  finally { S.staffBusy = false; render(); }
+}
+
+async function removeStaff(email) {
+  if (!confirm(`Remove console access for ${email}?\n\nTheir sign-in account is deleted. Member data is untouched.`)) return;
+  try {
+    await gql(`mutation R($e:String!){ adminRemoveStaff(email:$e) }`, { e: email });
+    toast(`${email} no longer has access.`);
+    await loadBms();
+  } catch (e) { toast(e.message); }
+}
+
+function vBmsStaff() {
+  const staff = S.staff || [];
+  const isOwner = (S.whoAmI || {}).role === 'OWNER';
+  const rows = staff.map((a) => `<tr>
+    <td class="mono" style="font-size:12px;">${esc(a.email)}</td>
+    <td style="font-size:12.5px;">${esc(a.name || '\u2014')}</td>
+    <td><span style="display:inline-block;font-size:10px;letter-spacing:.05em;padding:2px 7px;
+      border:1px solid ${a.role === 'OWNER' ? 'var(--bms-accent)' : 'var(--bms-rule-2)'};
+      color:${a.role === 'OWNER' ? 'var(--bms-accent)' : 'var(--bms-mute)'};">${esc(a.role)}</span></td>
+    <td class="mono" style="font-size:11.5px;color:var(--bms-mute);">${esc(a.createdAt ? String(a.createdAt).slice(0,10) : '\u2014')}</td>
+    <td class="mono" style="font-size:11.5px;color:var(--bms-mute);">${esc(a.addedBy || '\u2014')}</td>
+    <td style="text-align:right;">${
+      a.role === 'OWNER'
+        ? `<span style="font-size:11px;color:var(--bms-mute);">permanent</span>`
+        : (isOwner ? `<button class="pill" onclick="removeStaff('${esc(a.email)}')">Remove</button>` : '')}</td>
+  </tr>`).join('');
+
+  return bmsShell('staff', `
+    <div style="display:flex;flex-direction:column;gap:3px;">
+      <h1 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em;">Staff</h1>
+      <span style="font-size:12px;color:var(--bms-mute);">Who can sign in to this console. Sign-in is by emailed code; there are no passwords.</span>
+    </div>
+
+    <div class="tblwrap"><table>
+      <thead><tr><th>Email</th><th>Name</th><th>Role</th><th>Added</th><th>Added by</th><th></th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table></div>
+
+    ${isOwner ? `<div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:18px 20px;display:flex;flex-direction:column;gap:12px;">
+      <span class="lbl">Add a staff member</span>
+      <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+        <input id="staff-email" type="email" placeholder="name@company.com" ${S.staffBusy ? 'disabled' : ''}
+          style="border:1px solid var(--bms-rule-2);background:var(--bms-panel);padding:8px 11px;font-size:13px;font-family:var(--mono);min-width:260px;color:var(--bms-ink);">
+        <input id="staff-name" placeholder="Full name (optional)" ${S.staffBusy ? 'disabled' : ''}
+          style="border:1px solid var(--bms-rule-2);background:var(--bms-panel);padding:8px 11px;font-size:13px;font-family:inherit;min-width:200px;color:var(--bms-ink);">
+        <button class="pill" onclick="addStaff()" ${S.staffBusy ? 'disabled' : ''}>${S.staffBusy ? 'Adding\u2026' : 'Add'}</button>
+      </div>
+      <span style="font-size:11.5px;color:var(--bms-mute);max-width:80ch;">They get the same access you have, apart from managing staff. Removing someone deletes their sign-in account immediately.</span>
+    </div>` : `<p style="margin:0;font-size:12px;color:var(--bms-mute);">Only the owner can add or remove staff.</p>`}`);
+}
+
 function vBmsSettings() {
   const pc = S.pricing;
   // The active value has to be unmistakable — this is the number that decides
@@ -1418,7 +1550,8 @@ async function gql(query, variables) {
 const Q_PORTAL = `query Portal {
   me { userId name email designation organisation location bio country tokenBalance createdAt connectionCount secondaryEmail }
   myConnections { userId name designation organisation location connectedAt connectionCount }
-  myInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome }
+  myInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome targetName gatekeeperName direction }
+  incomingInvitations { inviteId recipientEmail senderName senderDesignation status type createdAt daysLeft tokenOutcome direction }
   tokenPrice { currency symbol tokens baseMinor taxMinor totalMinor taxLabel baseDisplay taxDisplay totalDisplay }
   paymentMode
 }`;
@@ -1436,6 +1569,7 @@ async function loadPortal() {
     S.connections = d.myConnections || [];
     // second degree is paged separately
     S.invites = d.myInvitations || [];
+    S.incoming = d.incomingInvitations || [];
     S.price = d.tokenPrice; S.payMode = d.paymentMode;
     if (!S.landed) {
       S.landed = true;
@@ -1624,6 +1758,23 @@ async function removeConnection(userId, name) {
   } catch (e) { toast(e.message); }
 }
 
+async function acceptInviteInline(inviteId) {
+  try {
+    await gql(`mutation A($i:ID!){ acceptInvitation(inviteId:$i){ inviteId status } }`, { i: inviteId });
+    toast('Connected.');
+    await refreshPortal();
+  } catch (e) { toast(e.message); }
+}
+
+async function declineInviteInline(inviteId) {
+  if (!confirm('Decline this invitation?\n\nThe token they spent goes back to them.')) return;
+  try {
+    await gql(`mutation D($i:ID!){ declineInvitation(inviteId:$i){ inviteId status } }`, { i: inviteId });
+    toast('Declined. Their token was returned.');
+    await refreshPortal();
+  } catch (e) { toast(e.message); }
+}
+
 async function cancelInvite(inviteId, email) {
   if (!confirm('Cancel the invitation to ' + email + '?\n\nYour token is returned and they will not be able to accept it.')) return;
   try {
@@ -1780,7 +1931,7 @@ async function refreshPortal() {
     const d = await gql(Q_PORTAL);
     S.me = d.me; S.connections = d.myConnections || [];
     S.second = d.secondDegree || [];
-    S.invites = d.myInvitations || []; S.price = d.tokenPrice; S.payMode = d.paymentMode;
+    S.invites = d.myInvitations || []; S.incoming = d.incomingInvitations || []; S.price = d.tokenPrice; S.payMode = d.paymentMode;
   } catch (e) { S.dataError = e.message; }
   render();
 }
@@ -2213,6 +2364,7 @@ function view() {
   if (h === '#/bms/users') return vBmsUsers();
   if (h === '#/bms/invitations') return vBmsInv();
   if (h === '#/bms/transactions') return vBmsTx();
+  if (h === '#/bms/staff') return vBmsStaff();
   if (h === '#/bms/settings') return vBmsSettings();
 
   if (h.startsWith('#/p/')) return vProfile(h.slice(4));
