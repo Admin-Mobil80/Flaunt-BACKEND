@@ -1614,7 +1614,7 @@ async function loadPortal() {
       S.landed = true;
       const hasInvite = await loadInviteFromLink();
       if (hasInvite) go('#/invite');
-      else go(S.connections.length > 0 ? '#/network' : '#/start');
+      else go(homeAfterAction());
     }
   } catch (e) {
     S.dataError = e.message;
@@ -1756,7 +1756,7 @@ async function respondToInvite(accept) {
     history.replaceState(null, '', location.pathname);
     await refreshPortal();
     S.landed = true;
-    go(accept ? '#/network' : '#/start');
+    go(accept ? '#/network' : homeAfterAction());
     toast(accept ? 'Connected. You can both see each other in full now.' : 'Declined. Their token has been returned.');
   } catch (e) {
     S.inviteError = e.message;
@@ -1785,7 +1785,7 @@ function vInviteResponse() {
     </div>` : `
     <div style="display:flex;flex-direction:column;gap:12px;">
       <h1 class="big">This invitation is not available</h1>
-      <button class="btn" onclick="S.inviteError=null;S.pendingInvite=null;history.replaceState(null,'',location.pathname);S.landed=true;go('#/start');render();">Continue to Flaunt</button>
+      <button class="btn" onclick="S.inviteError=null;S.pendingInvite=null;history.replaceState(null,'',location.pathname);S.landed=true;go(homeAfterAction());render();">Continue to Flaunt</button>
     </div>`}
   </div></div>`;
 }
@@ -2415,7 +2415,12 @@ function view() {
   if (h === '#/welcome') return vWelcome();
   if (h === '#/invite') return vInviteResponse();
   if (h === '#/gatekeeper') return vGatekeeperInbox();
-  if (h === '#/start') return vFirstRun();
+  if (h === '#/start') {
+    // Reachable by back button, a stale link, or any future caller that has
+    // not thought about it. Someone with a network is not a first run.
+    if (S.connections && S.connections.length > 0) return vNetwork();
+    return vFirstRun();
+  }
   if (h === '#/profile') return vProfileEdit();
   if (h === '#/invitations') return vInvitations();
   if (h === '#/gatekeeper') return vGatekeeper();
@@ -2430,6 +2435,19 @@ function view() {
   return APP === 'bms' ? vBmsUsers() : vNetwork();
 }
 function homeForApp() { return APP === 'bms' ? '#/bms/users' : '#/network'; }
+
+/**
+ * Where a member belongs after finishing something.
+ *
+ * The first-run screen is only ever right for somebody with no connections.
+ * Declining an invitation used to route everyone there unconditionally, on the
+ * assumption that anyone answering an invite link must be new — so an
+ * established member who declined was shown a welcome screen offering them
+ * their existing balance as tokens "to start with".
+ */
+function homeAfterAction() {
+  return (S.connections && S.connections.length > 0) ? '#/network' : '#/start';
+}
 
 /**
  * Shown while the first load is in flight.
