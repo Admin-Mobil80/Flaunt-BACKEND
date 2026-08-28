@@ -29,6 +29,10 @@ __FAVICON__
   --mono:"IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 *, *::before, *::after { box-sizing: border-box; }
+/* Reserve the scrollbar track on the scrolling element itself. Without it a
+   short tab has no scrollbar and a long one does, so moving between tabs
+   shifts the centred column sideways by half the scrollbar's width. */
+html { scrollbar-gutter: stable; }
 body {
   margin:0; background:var(--paper); color:var(--ink);
   font-family:var(--sans); font-size:14px; line-height:1.55;
@@ -57,10 +61,14 @@ button { font:inherit; color:inherit; cursor:pointer; }
 .purse:hover { border-color:var(--accent); }
 .avatar { border-radius:50%; background:#EDE3D6; color:#4A4137; font-family:var(--serif);
   display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-.wrap { padding:clamp(28px,4vw,54px) clamp(20px,5vw,56px) 72px; }
-.col { max-width:764px; margin:0 auto; display:flex; flex-direction:column; gap:30px; }
+.wrap { padding:clamp(18px,2.2vw,26px) clamp(20px,5vw,56px) 72px; }
+.col { max-width:764px; margin:0 auto; display:flex; flex-direction:column; gap:22px; }
 .col.wide { max-width:830px; }
-h1.big { margin:0; font-family:var(--serif); font-size:clamp(26px,4vw,32px); font-weight:400;
+/* One container for the three top-level destinations. They were 764, 830 and
+   700 wide with two different gaps, so switching tabs shifted the whole page
+   sideways and re-spaced it — the jump had nothing to do with the content. */
+.col.page { max-width:830px; gap:18px; }
+h1.big { margin:0; font-family:var(--serif); font-size:clamp(21px,2.5vw,25px); font-weight:400;
   letter-spacing:-.01em; text-wrap:balance; }
 
 .row-link { display:flex; align-items:center; gap:14px; padding:11px 0;
@@ -432,7 +440,7 @@ function vNetwork() {
   if (tab === 'second' && S.second.length === 0 && !S.secondLoading && !S.secondError) loadSecond(0);
 
   const direct = S.connections.filter(matches);
-  const second = S.second.filter(matches);
+  const second = q ? S.second : S.second.filter(matches);
 
   // The whole row is the target — a name-only hit area is a small thing to aim
   // at when everything in the row is about the same person.
@@ -465,7 +473,7 @@ function vNetwork() {
       ${label}<span class="mono" style="font-size:11px;color:var(--faint);">${n}</span></button>`;
   };
 
-  return topbar('network') + `<div class="wrap"><div class="col">
+  return topbar('network') + `<div class="wrap"><div class="col page">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <h1 class="big">Your network</h1>
       <button onclick="openInvite()" style="background:none;border:none;padding:0;font-size:12.5px;color:var(--accent);">+ Invite someone</button>
@@ -476,13 +484,15 @@ function vNetwork() {
       ${tabBtn('second', 'Second degree', S.secondTotal || '—')}
     </div>
 
-    ${(S.connections.length > 8 || S.second.length > 8) ? `<div style="display:flex;align-items:center;gap:11px;border:1px solid var(--rule-2);background:var(--raised);padding:10px 13px;">
+    <div style="display:flex;align-items:center;gap:11px;border:1px solid var(--rule-2);background:var(--raised);padding:8px 12px;">
       <span style="color:var(--faint);display:flex;">${SEARCH}</span>
-      <input id="net-filter" value="${esc(S.netFilter || '')}" oninput="S.netFilter=this.value;render();"
-        placeholder="Filter the loaded rows by name, role, company or introducer"
+      <input id="net-filter" value="${esc(S.netFilter || '')}" oninput="onNetFilter(this.value)"
+        placeholder="${tab === 'second' ? 'Search every second-degree contact by name, role or company' : 'Search your connections by name, role or company'}"
         style="border:none;outline:none;background:none;font-size:13.5px;width:100%;font-family:inherit;color:var(--ink);">
-      ${q ? `<button onclick="S.netFilter='';render();" style="background:none;border:none;color:var(--faint);font-size:16px;padding:0 2px;">&times;</button>` : ''}
-    </div>` : ''}
+      ${(S.secondSearching || (tab === 'second' && q && S.secondLoading))
+        ? `<span class="lbl" style="color:var(--faint);white-space:nowrap;">searching…</span>` : ''}
+      ${q ? `<button onclick="onNetFilter('')" style="background:none;border:none;color:var(--faint);font-size:16px;padding:0 2px;">&times;</button>` : ''}
+    </div>
 
     ${tab === 'direct' ? `<div style="display:flex;flex-direction:column;">
       ${S.connections.length ? header(false) : ''}
@@ -547,7 +557,7 @@ async function openProfile(userId) {
 function vGatekeeperInbox() {
   if (S.gatekeeper === null && !S.gkLoading && !S.gkError) loadGatekeeper();
   const rs = S.gatekeeper || [];
-  return topbar('gatekeeper') + `<div class="wrap"><div class="col" style="max-width:700px;gap:26px;">
+  return topbar('gatekeeper') + `<div class="wrap"><div class="col page">
     <div style="display:flex;flex-direction:column;gap:7px;">
       <h1 class="big">Introduction requests</h1>
       <p style="margin:0;font-size:14px;color:var(--ink-soft);">People you know asking to be introduced to other people you know.</p>
@@ -764,7 +774,7 @@ function vInvitations() {
     </div>`;
   }).join('');
 
-  return topbar('invitations') + `<div class="wrap"><div class="col wide" style="gap:26px;">
+  return topbar('invitations') + `<div class="wrap"><div class="col page">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <h1 class="big">Invitations</h1>
       ${refunded ? `<div style="display:flex;align-items:center;gap:8px;color:var(--good);">
@@ -871,13 +881,15 @@ function vTokens() {
 
 const PAGE = 50;
 
-const Q_USERS = `query Users($o:Int!){
-  adminUsers(limit: ${PAGE}, offset: $o) { userId name email country tokenBalance connectionCount createdAt }
+const Q_USERS = `query Users($o:Int!,$q:String){
+  adminUsers(limit: ${PAGE}, offset: $o, q: $q) {
+    total hasMore items { userId name email country tokenBalance connectionCount createdAt } }
 }`;
 
 const Q_ADMIN = `query Admin($o:Int!) {
   adminStats { totalUsers usersIndia usersInternational tokensOutstanding tokensConsumed tokensRefunded }
-  adminUsers(limit: ${PAGE}, offset: $o) { userId name email country tokenBalance connectionCount createdAt }
+  adminUsers(limit: ${PAGE}, offset: $o) {
+    total hasMore items { userId name email country tokenBalance connectionCount createdAt } }
   adminInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome }
   adminPricingConfig { tokensPerBundle allowedSizes signupTokens signupRange updatedAt updatedBy }
   adminPaymentConfig { mode modes secretName live updatedAt updatedBy }
@@ -888,7 +900,8 @@ async function loadBms() {
   try {
     const d = await gql(Q_ADMIN, { o: (S.userPage || 0) * PAGE });
     S.stats = d.adminStats;
-    S.users = d.adminUsers || [];
+    S.users = d.adminUsers?.items || [];
+    S.usersTotal = d.adminUsers?.total ?? 0;
     S.adminInvites = d.adminInvitations || [];
     S.pricing = d.adminPricingConfig;
     S.payment = d.adminPaymentConfig;
@@ -902,14 +915,15 @@ async function loadBms() {
  * every page turn as slow as a cold load.
  */
 async function gotoUserPage(page) {
-  const total = (S.stats && S.stats.totalUsers) || 0;
+  const total = S.usersTotal ?? ((S.stats && S.stats.totalUsers) || 0);
   const max = Math.max(0, Math.ceil(total / PAGE) - 1);
   const next = Math.min(Math.max(0, page), max);
   if (next === (S.userPage || 0)) return;
   S.userPage = next; S.usersLoading = true; render();
   try {
-    const d = await gql(Q_USERS, { o: next * PAGE });
-    S.users = d.adminUsers || [];
+    const d = await gql(Q_USERS, { o: next * PAGE, q: (S.userQuery || '').trim() || null });
+    S.users = d.adminUsers?.items || [];
+    S.usersTotal = d.adminUsers?.total ?? 0;
   } catch (e) { toast(e.message); }
   finally { S.usersLoading = false; render(); }
 }
@@ -988,6 +1002,24 @@ function vBmsLoading() {
     <span class="sr-only" role="status" aria-live="polite">Loading admin data</span>`);
 }
 
+/** Debounced so a search does not fire a scan per keystroke. */
+function searchUsers(value) {
+  S.userQuery = value;
+  clearTimeout(S._userTimer);
+  S._userTimer = setTimeout(() => { S.userPage = 0; S.usersLoading = true; render(); reloadUsers(); }, 300);
+}
+
+async function reloadUsers() {
+  const forQuery = (S.userQuery || '').trim();
+  try {
+    const d = await gql(Q_USERS, { o: 0, q: forQuery || null });
+    if ((S.userQuery || '').trim() !== forQuery) return;
+    S.users = d.adminUsers?.items || [];
+    S.usersTotal = d.adminUsers?.total ?? 0;
+  } catch (e) { toast(e.message); }
+  finally { S.usersLoading = false; render(); }
+}
+
 function vBmsUsers() {
   const st = S.stats || { totalUsers: 0, usersIndia: 0, usersInternational: 0, tokensOutstanding: 0, tokensConsumed: 0, tokensRefunded: 0 };
   const pc = S.pricing;
@@ -1002,11 +1034,14 @@ function vBmsUsers() {
 
 
   const page = S.userPage || 0;
-  const pages = Math.max(1, Math.ceil((st.totalUsers || 0) / PAGE));
-  const from = st.totalUsers ? page * PAGE + 1 : 0;
-  const to = Math.min((page + 1) * PAGE, st.totalUsers || 0);
+  // Everything below counts the RESULT SET. With a search active the directory
+  // total is the wrong denominator — it would promise pages that do not exist.
+  const shownTotal = S.usersTotal ?? (st.totalUsers || 0);
+  const pages = Math.max(1, Math.ceil(shownTotal / PAGE));
+  const from = shownTotal ? page * PAGE + 1 : 0;
+  const to = Math.min((page + 1) * PAGE, shownTotal);
   const pager = pages > 1 ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-      <span style="font-size:11.5px;color:var(--bms-mute);">Showing ${from}\u2013${to} of ${st.totalUsers}${S.usersLoading ? ' \u00b7 loading\u2026' : ''}</span>
+      <span style="font-size:11.5px;color:var(--bms-mute);">Showing ${from}\u2013${to} of ${shownTotal}${S.usersLoading ? ' \u00b7 loading\u2026' : ''}</span>
       <span style="display:flex;align-items:center;gap:8px;">
         <button class="pill" onclick="gotoUserPage(${page - 1})"${page === 0 || S.usersLoading ? ' disabled' : ''}>Previous</button>
         <span class="mono" style="font-size:11.5px;color:var(--bms-soft);">Page ${page + 1} of ${pages}</span>
@@ -1031,10 +1066,18 @@ function vBmsUsers() {
       <div><span class="lbl">Refunded tokens</span><span class="mono" style="font-size:19px;font-weight:600;color:var(--bms-good);">${st.tokensRefunded ?? 0}</span></div>
     </div>
 
+    <div style="display:flex;align-items:center;gap:10px;border:1px solid var(--bms-rule);background:var(--bms-panel);padding:8px 12px;">
+      <input id="user-q" value="${esc(S.userQuery || '')}" oninput="searchUsers(this.value)"
+        placeholder="Search all ${st.totalUsers} accounts by name or email"
+        style="border:none;outline:none;background:none;font-size:13px;width:100%;font-family:inherit;color:var(--bms-ink);">
+      ${S.userQuery ? `<button class="pill" onclick="searchUsers('')">Clear</button>` : ''}
+    </div>
+
     ${S.users.length ? `<div class="tblwrap"><table>
       <thead><tr><th>Name</th><th>Primary email</th><th>Country</th><th>Tokens</th><th>Connections</th><th>Joined</th></tr></thead>
       <tbody>${rows}</tbody>
-    </table></div>` : `<div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:30px;font-size:13px;color:var(--bms-mute);">No accounts yet. The first sign-up on flaunt.network will appear here.</div>`}
+    </table></div>` : `<div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:30px;font-size:13px;color:var(--bms-mute);">${
+      S.userQuery ? `No account matches &ldquo;${esc(S.userQuery)}&rdquo;.` : 'No accounts yet. The first sign-up on flaunt.network will appear here.'}</div>`}
 
     ${pager}
 
@@ -1044,13 +1087,17 @@ function vBmsUsers() {
 const TX_PAGE = 50;
 
 /** Payments are loaded on demand — the ledger screen should not wait on them. */
-async function loadTx(page) {
-  S.txPage = Math.max(0, page); S.txLoading = true; S.txError = null; render();
+async function loadTx(page, mode) {
+  if (mode !== undefined) { S.txMode = mode; S.txPage = 0; } else { S.txPage = Math.max(0, page); }
+  // Defaults to whichever environment billing is actually running in, so the
+  // screen opens on the money that is currently moving.
+  if (!S.txMode) S.txMode = (S.payment && S.payment.mode) || 'test';
+  S.txLoading = true; S.txError = null; render();
   try {
-    const d = await gql(`query Tx($l:Int!,$o:Int!){ adminPayments(limit:$l, offset:$o){
+    const d = await gql(`query Tx($l:Int!,$o:Int!,$m:String){ adminPayments(limit:$l, offset:$o, mode:$m){
       total paidCount hasMore gross { currency minor }
       items { orderId paymentId userId memberName memberEmail status mode tokens currency totalMinor createdAt paidAt } } }`,
-      { l: TX_PAGE, o: S.txPage * TX_PAGE });
+      { l: TX_PAGE, o: S.txPage * TX_PAGE, m: S.txMode });
     S.tx = d.adminPayments;
   } catch (e) { S.txError = e.message; }
   finally { S.txLoading = false; render(); }
@@ -1064,6 +1111,7 @@ function money(cur, minor) {
 
 function vBmsTx() {
   if (S.tx === undefined && !S.txLoading && !S.txError) { loadTx(0); }
+  const txMode = S.txMode || 'test';
   const t = S.tx;
   const page = S.txPage || 0;
 
@@ -1082,21 +1130,38 @@ function vBmsTx() {
     <td class="mono" style="font-size:13px;font-weight:600;white-space:nowrap;">${money(p.currency, p.totalMinor)}</td>
     <td class="mono" style="font-size:12px;color:var(--bms-soft);">${p.tokens}</td>
     <td>${badge(p.status)}</td>
-    <td class="mono" style="font-size:10.5px;color:var(--bms-mute);">${esc(p.mode)}</td>
+    ${txMode === 'all' ? `<td class="mono" style="font-size:10.5px;color:var(--bms-mute);">${esc(p.mode)}</td>` : ''}
     <td class="mono" style="font-size:10.5px;color:var(--bms-mute);word-break:break-all;">${esc(p.orderId)}${
       p.paymentId ? `<br><span style="color:var(--bms-soft);">${esc(p.paymentId)}</span>` : ''}</td>
   </tr>`).join('');
 
-  const skel = `<tr>${'<td><div class="sk-b" style="height:10px;width:80%;"></div></td>'.repeat(7)}</tr>`.repeat(8);
+  const cols = txMode === 'all' ? 7 : 6;
+  const skel = `<tr>${'<td><div class="sk-b" style="height:10px;width:80%;"></div></td>'.repeat(cols)}</tr>`.repeat(8);
   const pages = t ? Math.max(1, Math.ceil(t.total / TX_PAGE)) : 1;
 
   return bmsShell('transactions', `
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <div style="display:flex;flex-direction:column;gap:3px;">
         <h1 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em;">Transactions</h1>
-        <span style="font-size:12px;color:var(--bms-mute);">Every payment order, paid or not.</span>
+        <span style="font-size:12px;color:var(--bms-mute);">${
+        txMode === 'all' ? 'Every payment order across both environments.'
+        : `Payment orders in the ${txMode} environment, paid or not.`}</span>
       </div>
       <button class="pill" onclick="loadTx(${page})" ${S.txLoading ? 'disabled' : ''}>Refresh</button>
+    </div>
+
+    <div style="display:flex;gap:22px;border-bottom:1px solid var(--bms-rule);">
+      ${[['test','Test'],['live','Live'],['all','All']].map(([m,label]) => {
+        const on = (S.txMode || 'test') === m;
+        return `<button onclick="loadTx(0,'${m}')" aria-current="${on}"
+          style="background:none;border:none;border-bottom:2px solid ${on ? 'var(--bms-accent)' : 'transparent'};
+            color:${on ? 'var(--bms-ink)' : 'var(--bms-mute)'};font-weight:${on ? 600 : 400};font-size:13px;
+            padding:0 0 9px;display:flex;align-items:center;gap:6px;">${label}${
+              m === 'live' && S.payment && S.payment.mode === 'live'
+                ? `<span class="mono" style="font-size:9.5px;color:var(--bms-good);">IN FORCE</span>`
+                : m === 'test' && S.payment && S.payment.mode === 'test'
+                ? `<span class="mono" style="font-size:9.5px;color:var(--bms-mute);">IN FORCE</span>` : ''}</button>`;
+      }).join('')}
     </div>
 
     ${t ? `<div class="stats">
@@ -1116,8 +1181,9 @@ function vBmsTx() {
       <button class="pill" onclick="loadTx(${page})">Try again</button></div>` : ''}
 
     ${!S.txError && (S.txLoading || t) ? `<div class="tblwrap"><table>
-      <thead><tr><th>When</th><th>Member</th><th>Amount</th><th>Tokens</th><th>Status</th><th>Mode</th><th>Razorpay ids</th></tr></thead>
-      <tbody>${S.txLoading ? skel : (rows || `<tr><td colspan="7" style="padding:26px;font-size:13px;color:var(--bms-mute);">No payments yet. The first purchase on flaunt.network will appear here.</td></tr>`)}</tbody>
+      <thead><tr><th>When</th><th>Member</th><th>Amount</th><th>Tokens</th><th>Status</th>${
+        txMode === 'all' ? '<th>Mode</th>' : ''}<th>Razorpay ids</th></tr></thead>
+      <tbody>${S.txLoading ? skel : (rows || `<tr><td colspan="${cols}" style="padding:26px;font-size:13px;color:var(--bms-mute);">No ${txMode === 'all' ? '' : txMode + ' '}payments yet.</td></tr>`)}</tbody>
     </table></div>` : ''}
 
     ${t && pages > 1 ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
@@ -1572,10 +1638,14 @@ const SECOND_PAGE = 50;
 /** Fetches one page of the second degree. Thousands of contacts cannot arrive at once. */
 async function loadSecond(offset = 0) {
   S.secondLoading = true; render();
+  // Captured now so a slow reply for an older query cannot overwrite a newer
+  // one — typing fast otherwise leaves the results of a prefix on screen.
+  const forQuery = (S.netFilter || '').trim();
   try {
-    const d = await gql(`query S($l:Int!,$o:Int!){ secondDegree(limit:$l, offset:$o){
+    const d = await gql(`query S($l:Int!,$o:Int!,$q:String){ secondDegree(limit:$l, offset:$o, q:$q){
       items { userId name designation organisation viaName viaUserId } total hasMore } }`,
-      { l: SECOND_PAGE, o: offset });
+      { l: SECOND_PAGE, o: offset, q: forQuery || null });
+    if ((S.netFilter || '').trim() !== forQuery) return;
     const page = d.secondDegree;
     S.second = offset === 0 ? page.items : [...S.second, ...page.items];
     S.secondTotal = page.total;
@@ -1583,6 +1653,23 @@ async function loadSecond(offset = 0) {
     S.secondOffset = offset + page.items.length;
   } catch (e) { S.secondError = e.message; }
   finally { S.secondLoading = false; render(); }
+}
+
+/**
+ * Direct connections are all in memory, so they filter instantly on the client.
+ * The second degree is paged and can run to thousands, so it has to be searched
+ * on the server — otherwise the box only ever sees the fifty rows on screen.
+ */
+function onNetFilter(value) {
+  S.netFilter = value;
+  if (S.netTab !== 'second') { render(); return; }
+  clearTimeout(S._netTimer);
+  S.secondSearching = true; render();
+  S._netTimer = setTimeout(() => {
+    S.secondSearching = false;
+    S.second = []; S.secondOffset = 0;
+    loadSecond(0);
+  }, 300);
 }
 
 async function requestIntroduction(targetUserId, targetName, viaUserId, viaName) {

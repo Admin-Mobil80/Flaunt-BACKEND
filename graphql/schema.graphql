@@ -191,6 +191,13 @@ type AdminPaymentPage @aws_cognito_user_pools {
   gross: [CurrencyTotal!]!
 }
 
+type AdminUserPage @aws_cognito_user_pools {
+  items: [AdminUser!]!
+  # After any search filter, so the pager describes what is on screen.
+  total: Int!
+  hasMore: Boolean!
+}
+
 type AdminStats @aws_cognito_user_pools {
   totalUsers: Int!
   usersIndia: Int!
@@ -208,7 +215,9 @@ type Query {
   myConnections: [Connection!]!
   # People one step beyond your direct contacts, and who could introduce you.
   # Paginated: a well-connected member's second degree runs to thousands.
-  secondDegree(limit: Int, offset: Int): SecondDegreePage!
+  # q searches name, designation and organisation across the WHOLE second
+  # degree, not just the page already loaded.
+  secondDegree(limit: Int, offset: Int, q: String): SecondDegreePage!
   # Introduction requests waiting on the caller's approval, as the gatekeeper.
   gatekeeperRequests: [IntroductionRequest!]!
   myInvitations: [Invitation!]!
@@ -223,10 +232,12 @@ type Query {
   connectionsOf(userId: ID!): [Profile!]!
   searchPeople(query: String!): [Profile!]!
 
-  adminUsers(limit: Int, offset: Int): [AdminUser!]! @aws_cognito_user_pools
+  # q matches name or email, case-insensitively, across every account.
+  adminUsers(limit: Int, offset: Int, q: String): AdminUserPage! @aws_cognito_user_pools
   adminStats: AdminStats! @aws_cognito_user_pools
   adminInvitations(status: String): [Invitation!]! @aws_cognito_user_pools
-  adminPayments(limit: Int, offset: Int): AdminPaymentPage! @aws_cognito_user_pools
+  # mode is "test", "live", or "all".
+  adminPayments(limit: Int, offset: Int, mode: String): AdminPaymentPage! @aws_cognito_user_pools
   adminPricingConfig: PricingConfig! @aws_cognito_user_pools
   adminPaymentConfig: PaymentConfig! @aws_cognito_user_pools
 }

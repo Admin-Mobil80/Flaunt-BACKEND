@@ -789,7 +789,7 @@ const SECOND_DEGREE_FAN_OUT = 60;
  * Emails are omitted entirely here. The masked address belongs on the profile,
  * where it is one person's detail, not sprayed across a list.
  */
-async function secondDegree(userId: string, limit = 50, offset = 0) {
+async function secondDegree(userId: string, limit = 50, offset = 0, q?: string) {
   const mine = await connectionRows(userId);
   if (mine.length === 0) return { items: [], total: 0, hasMore: false };
   const direct = new Set(mine.map((r: any) => r.otherUserId));
@@ -1195,7 +1195,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
   switch (field) {
     case 'me': return me(userId);
     case 'myConnections': return myConnections(userId);
-    case 'secondDegree': return secondDegree(userId, args.limit ?? 50, args.offset ?? 0);
+    case 'secondDegree': return secondDegree(userId, args.limit ?? 50, args.offset ?? 0, args.q);
     case 'gatekeeperRequests': return gatekeeperRequests(userId);
     case 'requestIntroduction': return requestIntroduction(userId, args.targetUserId, args.viaUserId);
     case 'approveIntroduction': return approveIntroduction(userId, args.inviteId, args.note);

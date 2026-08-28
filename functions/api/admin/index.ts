@@ -62,8 +62,16 @@ async function allProfiles(): Promise<any[]> {
  * timeout at a thousand. Now it is one projected scan for the whole list, and
  * connection counts are fetched only for the page actually being shown.
  */
-async function adminUsers(limit = 50, offset = 0) {
-  const all = await allProfiles();
+async function adminUsers(limit = 50, offset = 0, q?: string) {
+  let all = await allProfiles();
+
+  // Filtering spans every account, not the page: a search that looked only at
+  // the fifty rows already on screen would miss almost everyone.
+  const needle = String(q ?? '').trim().toLowerCase();
+  if (needle) {
+    all = all.filter((u: any) => [u.name, u.primaryEmail]
+      .filter(Boolean).some((f: any) => String(f).toLowerCase().includes(needle)));
+  }
   all.sort((a: any, b: any) => String(b.createdAt ?? '').localeCompare(String(a.createdAt ?? '')));
   const page = all.slice(offset, offset + limit);
 
@@ -75,7 +83,7 @@ async function adminUsers(limit = 50, offset = 0) {
       Select: 'COUNT',
     }))));
 
-  return page.map((u: any, i: number) => ({
+  const items = page.map((u: any, i: number) => ({
     userId: String(u.PK).replace('USER#', ''),
     name: u.name ?? 'Unknown',
     email: u.primaryEmail ?? '',
@@ -84,6 +92,10 @@ async function adminUsers(limit = 50, offset = 0) {
     connectionCount: counts[i].Count ?? 0,
     createdAt: u.createdAt ?? '',
   }));
+
+  // total counts AFTER filtering, so the pager describes the result set being
+  // looked at rather than the whole directory.
+  return { items, total: all.length, hasMore: offset + limit < all.length };
 }
 
 /** Debits. Every one of these moves a token out of a member's balance. */
@@ -159,7 +171,7 @@ async function adminStats() {
  * and telling them apart is most of what this screen is for: a CREATED row
  * whose order is paid at Razorpay is a delivery that never landed.
  */
-async function adminPayments(limit: number, offset: number) {
+async function adminPayments(limit: number, offset: number, mode?: string) {
   const rows: any[] = [];
   let ExclusiveStartKey: any = undefined;
   do {
@@ -176,20 +188,24 @@ async function adminPayments(limit: number, offset: number) {
     ExclusiveStartKey = r.LastEvaluatedKey;
   } while (ExclusiveStartKey);
 
-  rows.sort((x: any, y: any) => String(y.createdAt ?? '').localeCompare(String(x.createdAt ?? '')));
+  // Test and live are separate environments holding different money; mixing
+  // them in one list makes every total on the screen meaningless.
+  const wanted = String(mode ?? '').trim().toLowerCase();
+  const scoped = wanted && wanted !== 'all' ? rows.filter((p: any) => p.mode === wanted) : rows;
+  scoped.sort((x: any, y: any) => String(y.createdAt ?? '').localeCompare(String(x.createdAt ?? '')));
 
   // Totals span every row, not the page: a summary that changed as you paged
   // through it would be worse than no summary at all.
   const gross = new Map<string, number>();
   let paidCount = 0;
-  for (const p of rows) {
+  for (const p of scoped) {
     if (p.status !== 'PAID') continue;
     paidCount++;
     const cur = String(p.currency ?? '');
     gross.set(cur, (gross.get(cur) ?? 0) + Number(p.totalMinor ?? 0));
   }
 
-  const page = rows.slice(offset, offset + limit);
+  const page = scoped.slice(offset, offset + limit);
 
   // One BatchGet for the page's members rather than a read per row.
   const ids = [...new Set(page.map((p: any) => p.userId).filter(Boolean))] as string[];
@@ -214,9 +230,9 @@ async function adminPayments(limit: number, offset: number) {
         memberName: m?.name ?? null, memberEmail: m?.primaryEmail ?? null,
       };
     }),
-    total: rows.length,
+    total: scoped.length,
     paidCount,
-    hasMore: offset + limit < rows.length,
+    hasMore: offset + limit < scoped.length,
     gross: [...gross.entries()].sort().map(([currency, minor]) => ({ currency, minor })),
   };
 }
@@ -412,10 +428,10 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
   const args = (event.arguments ?? {}) as any;
 
   switch (field) {
-    case 'adminUsers': return adminUsers(args.limit ?? 50, args.offset ?? 0);
+    case 'adminUsers': return adminUsers(args.limit ?? 50, args.offset ?? 0, args.q);
     case 'adminStats': return adminStats();
     case 'adminInvitations': return adminInvitations(args.status);
-    case 'adminPayments': return adminPayments(args.limit ?? 50, args.offset ?? 0);
+    case 'adminPayments': return adminPayments(args.limit ?? 50, args.offset ?? 0, args.mode);
     case 'adminPricingConfig': return adminPricingConfig();
     case 'adminPaymentConfig': return adminPaymentConfig();
     case 'adminSetPaymentMode': return adminSetPaymentMode(admin, args.mode);
