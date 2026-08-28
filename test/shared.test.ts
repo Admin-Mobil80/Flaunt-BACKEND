@@ -330,3 +330,55 @@ describe('email masking for 2nd-degree viewers (§3.2)', () => {
     expect(maskEmail('@nolocal.com')).toBe('***');
   });
 });
+
+import { coerceSignupGrant, isSignupGrant, DEFAULT_SIGNUP_TOKENS,
+  MIN_SIGNUP_TOKENS, MAX_SIGNUP_TOKENS } from '../functions/shared/pricing';
+import { verifyWebhook } from '../functions/shared/razorpay';
+
+describe('sign-up token grant (set from BMS)', () => {
+  test('accepts 1 through 10 only', () => {
+    for (let n = MIN_SIGNUP_TOKENS; n <= MAX_SIGNUP_TOKENS; n++) expect(isSignupGrant(n)).toBe(true);
+    for (const n of [0, -1, 11, 100, 2.5, '5', null]) expect(isSignupGrant(n as any)).toBe(false);
+  });
+
+  // Zero would create an account that cannot send a single invitation, and an
+  // unbounded value would give the network away.
+  test('a bad stored value falls back to the default, never to zero', () => {
+    for (const bad of [0, -5, 11, 9999, '10', null, undefined, {}]) {
+      expect(coerceSignupGrant(bad as any)).toBe(DEFAULT_SIGNUP_TOKENS);
+    }
+    expect(DEFAULT_SIGNUP_TOKENS).toBe(10);
+  });
+});
+
+describe('Razorpay webhook signature', () => {
+  const secret = 'whsec_test_value';
+  const body = JSON.stringify({ event: 'payment.captured', payload: { payment: { entity: { id: 'pay_1' } } } });
+  const sign = (b: string, s: string) =>
+    require('node:crypto').createHmac('sha256', s).update(b).digest('hex');
+
+  test('accepts a correct signature', () => {
+    expect(verifyWebhook(body, sign(body, secret), secret)).toBe(true);
+  });
+
+  // The classic way this check is broken while appearing implemented: verifying
+  // a re-serialised body instead of the bytes that were signed.
+  test('rejects a re-serialised body with the same content', () => {
+    const reserialised = JSON.stringify(JSON.parse(body).payload ? JSON.parse(body) : {});
+    if (reserialised !== body) {
+      expect(verifyWebhook(reserialised, sign(body, secret), secret)).toBe(false);
+    }
+    // And any byte change at all.
+    expect(verifyWebhook(body + ' ', sign(body, secret), secret)).toBe(false);
+  });
+
+  test('rejects a signature made with the other environment\'s secret', () => {
+    expect(verifyWebhook(body, sign(body, 'whsec_live_other'), secret)).toBe(false);
+  });
+
+  test('rejects missing or empty inputs rather than passing them', () => {
+    expect(verifyWebhook(body, '', secret)).toBe(false);
+    expect(verifyWebhook(body, sign(body, secret), '')).toBe(false);
+    expect(verifyWebhook('', '', '')).toBe(false);
+  });
+});

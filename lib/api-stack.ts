@@ -87,6 +87,14 @@ export class ApiStack extends Stack {
       actions: ['ses:SendEmail', 'ses:SendRawEmail'],
       resources: ['*'],
     }));
+    // Creating a Razorpay order needs the key pair for whichever mode is set.
+    portalFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['secretsmanager:GetSecretValue'],
+      resources: [
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:cloudmeter/razorpay_dev-*`,
+        `arn:aws:secretsmanager:${this.region}:${this.account}:secret:cloudmeter/razorpay_prod-*`,
+      ],
+    }));
 
     const adminFn = new lambdaNode.NodejsFunction(this, 'AdminApiFn', {
       ...common,
@@ -106,11 +114,12 @@ export class ApiStack extends Stack {
     const portalDs = this.api.addLambdaDataSource('PortalDataSource', portalFn);
     const adminDs = this.api.addLambdaDataSource('AdminDataSource', adminFn);
 
-    for (const field of ['me', 'myConnections', 'secondDegree', 'myInvitations', 'tokenPrice', 'searchPeople', 'invitation', 'profile', 'connectionsOf', 'gatekeeperRequests']) {
+    for (const field of ['me', 'myConnections', 'secondDegree', 'myInvitations', 'tokenPrice', 'paymentMode', 'searchPeople', 'invitation', 'profile', 'connectionsOf', 'gatekeeperRequests']) {
       portalDs.createResolver(`Query${field}`, { typeName: 'Query', fieldName: field });
     }
     portalDs.createResolver('MutationsendInvitation', { typeName: 'Mutation', fieldName: 'sendInvitation' });
     portalDs.createResolver('MutationupdateProfile', { typeName: 'Mutation', fieldName: 'updateProfile' });
+    portalDs.createResolver('MutationcreatePaymentOrder', { typeName: 'Mutation', fieldName: 'createPaymentOrder' });
     portalDs.createResolver('MutationacceptInvitation', { typeName: 'Mutation', fieldName: 'acceptInvitation' });
     portalDs.createResolver('MutationdeclineInvitation', { typeName: 'Mutation', fieldName: 'declineInvitation' });
     portalDs.createResolver('MutationcancelInvitation', { typeName: 'Mutation', fieldName: 'cancelInvitation' });
@@ -125,6 +134,7 @@ export class ApiStack extends Stack {
     adminDs.createResolver('MutationadminAdjustTokens', { typeName: 'Mutation', fieldName: 'adminAdjustTokens' });
     adminDs.createResolver('MutationadminSetTokensPerBundle', { typeName: 'Mutation', fieldName: 'adminSetTokensPerBundle' });
     adminDs.createResolver('MutationadminSetPaymentMode', { typeName: 'Mutation', fieldName: 'adminSetPaymentMode' });
+    adminDs.createResolver('MutationadminSetSignupTokens', { typeName: 'Mutation', fieldName: 'adminSetSignupTokens' });
 
     new CfnOutput(this, 'GraphqlUrl', { value: this.api.graphqlUrl });
   }

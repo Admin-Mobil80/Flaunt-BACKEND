@@ -260,7 +260,7 @@ function reset() {
         me:null, connections:[], invites:[], price:null, netTab:'direct', netFilter:'',
         second:[], secondTotal:0, secondOffset:0, secondHasMore:false, secondLoading:false, secondError:null,
         gatekeeper:null, gkLoading:false, gkError:null,
-        loading:false, dataError:null, landed:false, newVersion:false, sending:false,
+        loading:false, dataError:null, landed:false, newVersion:false, sending:false, buying:false, payMode:null,
         stats:null, users:[], adminInvites:[], pricing:null, payment:null, saving:false, profileError:null,
         pendingInvite:null, inviteError:null, responding:false, profileDraft:null, viewing:null,
         auth:{ step: APP === 'portal' ? (INVITE ? (INVITE.existing ? 'signin' : 'signup') : 'choose') : 'email', email: (INVITE && INVITE.email) || (APP === 'bms' ? 'riyad@mobil80.com' : ''), busy:false, error:null, session:null } };
@@ -603,30 +603,26 @@ function vProfile(id) {
 
   const role = [p.designation, p.organisation].filter(Boolean).join(' · ');
 
+  /**
+   * Contact details render only for a direct connection. Below that the whole
+   * block is absent rather than shown as masked or withheld — a row saying
+   * "hidden at this degree" still tells a viewer an address exists and roughly
+   * how long it is, and it clutters the page with something they cannot use.
+   */
   const contact = first ? `
-    <div class="grid2">
-      <div style="display:flex;flex-direction:column;gap:5px;">
-        <span style="font-size:11.5px;color:var(--faint);">Primary email</span>
-        <span class="mono" style="font-size:13.5px;">${esc(p.primaryEmail || '—')}</span>
+    <div style="display:flex;flex-direction:column;gap:14px;border-top:1px solid var(--rule-2);padding-top:24px;">
+      <span class="lbl">Contact</span>
+      <div class="grid2">
+        <div style="display:flex;flex-direction:column;gap:5px;">
+          <span style="font-size:11.5px;color:var(--faint);">Primary email</span>
+          <span class="mono" style="font-size:13.5px;">${esc(p.primaryEmail || '—')}</span>
+        </div>
+        ${p.secondaryEmail ? `<div style="display:flex;flex-direction:column;gap:5px;">
+          <span style="font-size:11.5px;color:var(--faint);">Secondary email${p.secondaryEmailUnverified ? ' · unconfirmed' : ''}</span>
+          <span class="mono" style="font-size:13.5px;">${esc(p.secondaryEmail)}</span>
+        </div>` : ''}
       </div>
-      <div style="display:flex;flex-direction:column;gap:5px;">
-        <span style="font-size:11.5px;color:var(--faint);">Secondary email${p.secondaryEmailUnverified ? ' · unconfirmed' : ''}</span>
-        <span class="mono" style="font-size:13.5px;color:${p.secondaryEmail?'var(--ink)':'var(--faint)'};">${esc(p.secondaryEmail || '—')}</span>
-      </div>
-    </div>`
-  : (second ? `
-    <div class="grid2">
-      <div style="display:flex;flex-direction:column;gap:5px;">
-        <span style="font-size:11.5px;color:var(--faint);">Primary email</span>
-        <span class="mono" style="font-size:13.5px;letter-spacing:.01em;">${esc(p.primaryEmail || '—')}</span>
-      </div>
-      <div style="display:flex;flex-direction:column;gap:5px;">
-        <span style="font-size:11.5px;color:var(--faint);">Secondary email</span>
-        <span style="font-size:13px;color:var(--faint);font-style:italic;">Hidden at this degree</span>
-      </div>
-    </div>
-    <span style="font-size:12.5px;color:var(--ink-soft);margin-top:2px;">Contact details unlock only when you are directly connected.</span>`
-  : `<span style="font-size:13px;color:var(--faint);font-style:italic;">Contact details are not visible.</span>`);
+    </div>` : '';
 
   return topbar('network') + `<div class="wrap" style="padding-top:clamp(24px,3vw,40px);"><div class="col" style="max-width:700px;gap:32px;">
     <button onclick="S.viewing=null;go('#/network');" style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-soft);background:none;border:none;padding:0;align-self:flex-start;">${BACK_ARROW}Network</button>
@@ -659,10 +655,7 @@ function vProfile(id) {
       <p style="margin:0;font-size:15px;line-height:1.72;color:var(--ink-2);max-width:62ch;text-wrap:pretty;">${esc(p.bio)}</p>
     </div>` : ''}
 
-    <div style="display:flex;flex-direction:column;gap:14px;border-top:1px solid var(--rule-2);padding-top:24px;">
-      <div style="display:flex;align-items:center;gap:9px;"><span class="lbl">Contact</span>${first?'':`<span style="color:var(--faint);display:flex;">${LOCK}</span>`}</div>
-      ${contact}
-    </div>
+    ${contact}
 
     ${second && p.viaUserId ? `<div style="border:1px solid var(--rule-2);background:var(--raised);padding:24px 26px;display:flex;flex-direction:column;gap:18px;">
       <div style="display:flex;align-items:center;gap:11px;">
@@ -679,21 +672,25 @@ function vProfile(id) {
     `}
 
     ${p.degree === 1 && (v.tab || 'details') === 'connections' ? `<div style="display:flex;flex-direction:column;gap:0;">
-      <div class="lrow hide-sm" style="grid-template-columns:26px minmax(110px,1fr) minmax(0,1.3fr) 110px;border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
-        <span></span><span class="lbl">Name</span><span class="lbl">Role</span><span class="lbl" style="text-align:right;">Relationship</span>
+      <div class="lrow hide-sm" style="grid-template-columns:26px minmax(110px,1fr) minmax(0,1.3fr) 110px 22px;border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
+        <span></span><span class="lbl">Name</span><span class="lbl">Role</span><span class="lbl" style="text-align:right;">Relationship</span><span></span>
       </div>
       ${v.theirsLoading ? `<p style="margin:14px 0;font-size:13px;color:var(--ink-soft);">Loading…</p>` : ''}
       ${v.theirs && v.theirs.length ? v.theirs.map((c) => {
         const crole = [c.designation, c.organisation].filter(Boolean).join(' · ');
-        return `<div class="lrow" style="grid-template-columns:26px minmax(110px,1fr) minmax(0,1.3fr) 96px;">
+        // The whole row opens the profile. Introducing is a decision worth a
+        // token, so it belongs on the page that shows who the person actually
+        // is — not as a button beside a name in a list.
+        return `<div class="lrow lrow-click" onclick="S.viewing=null;go('#/p/${c.userId}')" role="link" tabindex="0"
+            onkeydown="if(event.key==='Enter'){S.viewing=null;go('#/p/${c.userId}')}"
+            style="grid-template-columns:26px minmax(110px,1fr) minmax(0,1.3fr) 110px 22px;">
           <span class="avatar" style="width:26px;height:26px;font-size:10.5px;background:#F3EDE4;">${initialsOf(c.name)}</span>
-          <button onclick="S.viewing=null;go('#/p/${c.userId}')" class="trunc"
-            style="background:none;border:none;padding:0;text-align:left;font-family:var(--serif);font-size:15px;color:var(--ink);">${esc(c.name)}</button>
+          <span class="trunc" style="font-family:var(--serif);font-size:15px;">${esc(c.name)}</span>
           <span class="trunc hide-sm" style="font-size:12.5px;color:var(--ink-soft);">${esc(crole || '—')}</span>
           <span style="text-align:right;">${c.degree === 1
             ? `<span class="lbl" style="color:var(--good);">Connected</span>`
-            : `<button onclick="event.stopPropagation();requestIntroduction('${c.userId}','${esc(c.name)}','${c.viaUserId || p.userId}','${esc(p.name)}')"
-                style="background:none;border:1px solid var(--rule-2);color:var(--accent);font-size:11.5px;padding:4px 10px;">Introduce</button>`}</span>
+            : `<span class="lbl" style="color:var(--warn);">2nd degree</span>`}</span>
+          <span style="color:var(--ghost);display:flex;justify-content:flex-end;">${CHEV}</span>
         </div>`;
       }).join('') : (v.theirs && v.theirs.length === 0 ? `<p style="margin:12px 0;font-size:13px;color:var(--faint);">They have no other connections yet.</p>` : '')}
       ${v.theirsError ? `<p style="margin:12px 0;font-size:12.5px;color:var(--bad);">${esc(v.theirsError)}</p>` : ''}
@@ -840,8 +837,8 @@ function vTokens() {
           <div style="height:1px;background:var(--rule-2);margin:3px 0;"></div>
           <div style="display:flex;justify-content:space-between;"><span style="font-size:14px;font-weight:500;">Total</span><span class="mono" style="font-size:19px;font-weight:500;">${esc(p.totalDisplay)}</span></div>
         </div>
-        <button class="btn" style="width:100%;" onclick="toast('Payments are not connected yet.')">Pay ${esc(p.totalDisplay)}</button>
-        <span style="font-size:11.5px;color:var(--faint);text-align:center;">Razorpay is not connected yet — this does not charge you.</span>
+        <button class="btn" style="width:100%;" ${S.buying ? 'disabled' : ''} onclick="buyTokens()">${S.buying ? 'Opening…' : `Pay ${esc(p.totalDisplay)}`}</button>
+        <span style="font-size:11.5px;color:var(--faint);text-align:center;">Razorpay${S.payMode === 'test' ? ' — test mode, no real money moves' : ''}. Tokens are added once the payment is confirmed.</span>
       </div>
     </div>
     <p style="margin:0;border-top:1px solid var(--rule);padding-top:20px;font-size:12.5px;color:var(--ink-soft);line-height:1.6;">Tokens never expire, and they are not refundable once an invitation has been accepted.</p>
@@ -853,7 +850,7 @@ const Q_ADMIN = `query Admin {
   adminStats { totalUsers usersIndia usersInternational tokensOutstanding }
   adminUsers(limit: 50) { userId name email country tokenBalance connectionCount createdAt }
   adminInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome }
-  adminPricingConfig { tokensPerBundle allowedSizes updatedAt updatedBy }
+  adminPricingConfig { tokensPerBundle allowedSizes signupTokens signupRange updatedAt updatedBy }
   adminPaymentConfig { mode modes secretName live updatedAt updatedBy }
 }`;
 
@@ -891,6 +888,14 @@ async function setPaymentMode(mode) {
     await gql(`mutation SetM($m:String!){ adminSetPaymentMode(mode:$m){ mode live secretName } }`, { m: mode });
     await loadBms();
     toast(mode === 'live' ? 'LIVE gateway active — real cards will be charged.' : 'Test gateway active. No real money moves.');
+  } catch (e) { toast(e.message); }
+}
+
+async function setSignupTokens(tokens) {
+  try {
+    await gql(`mutation SetS($t:Int!){ adminSetSignupTokens(tokens:$t){ signupTokens } }`, { t: tokens });
+    await loadBms();
+    toast(`New accounts now start with ${tokens} token${tokens === 1 ? '' : 's'}.`);
   } catch (e) { toast(e.message); }
 }
 
@@ -1028,7 +1033,32 @@ function vBmsSettings() {
           <span class="mono" style="font-size:11.5px;color:var(--bms-soft);">${pm ? esc(pm.secretName) : '—'}</span>
         </div>
         ${pm && pm.updatedAt ? `<span style="font-size:11px;color:var(--bms-mute);">Last changed ${esc(String(pm.updatedAt).slice(0,16).replace('T',' '))} by ${esc(pm.updatedBy || 'unknown')}</span>` : `<span style="font-size:11px;color:var(--bms-mute);">Never changed — defaults to test.</span>`}
-        <span style="font-size:11px;color:var(--bms-warn);">Billing is not built yet, so nothing reads this setting today. It is what the Razorpay integration will use when it lands.</span>
+        <span style="font-size:11px;color:var(--bms-mute);">Order creation and the webhook both read this. Switching mode changes which credentials are used from the next order onwards.</span>
+      </div>`;
+    })()}
+
+    ${(function () {
+      const lo = pc && pc.signupRange ? pc.signupRange[0] : 1;
+      const hi = pc && pc.signupRange ? pc.signupRange[1] : 10;
+      const opts = [];
+      for (let n = lo; n <= hi; n++) {
+        const on = pc && pc.signupTokens === n;
+        opts.push(`<button onclick="setSignupTokens(${n})" aria-current="${on}"
+          style="min-width:44px;padding:8px 12px;font-size:13.5px;font-weight:${on?700:500};cursor:pointer;
+            border:1.5px solid ${on?'var(--bms-accent)':'var(--bms-rule-2)'};
+            background:${on?'var(--bms-accent)':'var(--bms-panel)'};
+            color:${on?'#FFFFFF':'var(--bms-soft)'};">${n}</button>`);
+      }
+      return `<div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:16px 18px;display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;flex-direction:column;gap:3px;">
+          <span style="font-size:13px;font-weight:600;">Free tokens on sign-up</span>
+          <span style="font-size:11.5px;color:var(--bms-mute);max-width:74ch;">What a new account starts with. Lower it to reach the payment screen sooner &mdash; at ten, a new account has to send ten invitations before it ever sees one. Existing balances are not affected.</span>
+        </div>
+        <div style="display:flex;gap:7px;flex-wrap:wrap;">${opts.join('')}</div>
+        <div style="display:flex;align-items:center;gap:9px;border-top:1px solid var(--bms-rule);padding-top:11px;">
+          <span class="lbl">Currently in force</span>
+          <span style="font-size:13.5px;font-weight:600;color:var(--bms-accent);">${pc ? pc.signupTokens : '—'} free token${pc && pc.signupTokens === 1 ? '' : 's'} per new account</span>
+        </div>
       </div>`;
     })()}
 
@@ -1165,6 +1195,7 @@ const Q_PORTAL = `query Portal {
   myConnections { userId name designation organisation location connectedAt connectionCount }
   myInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome }
   tokenPrice { currency symbol tokens baseMinor taxMinor totalMinor taxLabel baseDisplay taxDisplay totalDisplay }
+  paymentMode
 }`;
 
 /**
@@ -1180,7 +1211,7 @@ async function loadPortal() {
     S.connections = d.myConnections || [];
     // second degree is paged separately
     S.invites = d.myInvitations || [];
-    S.price = d.tokenPrice;
+    S.price = d.tokenPrice; S.payMode = d.paymentMode;
     if (!S.landed) {
       S.landed = true;
       const hasInvite = await loadInviteFromLink();
@@ -1435,12 +1466,75 @@ async function decideIntroduction(inviteId, approve, requesterName, targetName) 
   } catch (e) { toast(e.message); }
 }
 
+function loadRazorpay() {
+  if (window.Razorpay) return Promise.resolve(true);
+  return new Promise((resolve) => {
+    const el = document.createElement('script');
+    el.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    el.onload = () => resolve(true);
+    el.onerror = () => resolve(false);
+    document.head.appendChild(el);
+  });
+}
+
+/**
+ * Opens Razorpay Checkout for one bundle.
+ *
+ * The amount is not passed from here — the server computed it from the account's
+ * own country and told Razorpay when it created the order, so a tampered client
+ * cannot change what is charged.
+ *
+ * Nothing is credited on success either. The handler below only tells the user
+ * their payment went through; the tokens arrive when Razorpay's webhook reaches
+ * the backend, which is the only path that can be trusted. So the balance is
+ * re-read a moment later rather than incremented optimistically.
+ */
+async function buyTokens() {
+  S.buying = true; render();
+  try {
+    const ok = await loadRazorpay();
+    if (!ok) throw new Error('Could not reach the payment provider. Check your connection and try again.');
+
+    const d = await gql(`mutation { createPaymentOrder { orderId keyId amountMinor currency tokens mode } }`);
+    const o = d.createPaymentOrder;
+
+    const rzp = new window.Razorpay({
+      key: o.keyId,
+      order_id: o.orderId,
+      name: 'Flaunt',
+      description: `${o.tokens} tokens`,
+      prefill: { email: S.me?.email || '', name: S.me?.name || '' },
+      theme: { color: '#6E2B2B' },
+      handler: async () => {
+        toast('Payment received. Your tokens will appear in a moment.');
+        // The webhook credits the balance, so poll briefly rather than assume.
+        for (let i = 0; i < 6; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          const before = S.me?.tokenBalance;
+          await refreshPortal();
+          if (S.me?.tokenBalance !== before) { toast(`${o.tokens} tokens added.`); break; }
+        }
+      },
+      modal: { ondismiss: () => { S.buying = false; render(); } },
+    });
+    rzp.on('payment.failed', (resp) => {
+      toast(resp?.error?.description || 'The payment did not go through.');
+      S.buying = false; render();
+    });
+    rzp.open();
+  } catch (e) {
+    toast(e.message || 'Could not start the payment.');
+  } finally {
+    S.buying = false; render();
+  }
+}
+
 async function refreshPortal() {
   try {
     const d = await gql(Q_PORTAL);
     S.me = d.me; S.connections = d.myConnections || [];
     S.second = d.secondDegree || [];
-    S.invites = d.myInvitations || []; S.price = d.tokenPrice;
+    S.invites = d.myInvitations || []; S.price = d.tokenPrice; S.payMode = d.paymentMode;
   } catch (e) { S.dataError = e.message; }
   render();
 }
@@ -1886,8 +1980,10 @@ function renderNotice() {
   const bms = APP === 'bms';
   el.innerHTML = `<div style="background:${bms ? '#20262E' : '#2A2018'};color:${bms ? '#AEB8C4' : '#C9BCA8'};
       font-size:11.5px;letter-spacing:.02em;padding:7px 18px;text-align:center;">
-    ${bms ? 'Preview — payments and daily digests are not built yet.'
-          : 'Preview — payments are not connected yet.'}
+    ${bms ? 'Preview — daily digests are not built yet.'
+          : (S.payMode === 'live'
+              ? 'Live payments are enabled — real cards will be charged.'
+              : 'Preview — payments run in Razorpay test mode.')}
   </div>`;
 }
 

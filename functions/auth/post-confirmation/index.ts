@@ -1,9 +1,22 @@
 import type { PostConfirmationTriggerHandler } from 'aws-lambda';
-import { TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { TransactWriteCommand, UpdateCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import * as k from '../../shared/keys';
+import { coerceSignupGrant } from '../../shared/pricing';
 
-const SIGNUP_TOKEN_GRANT = 10;
+/**
+ * Read per sign-up rather than cached: the value changes rarely, but a stale
+ * copy in a warm Lambda would keep granting the old amount after an admin
+ * changed it, with nothing to indicate why.
+ */
+async function signupGrant(): Promise<number> {
+  try {
+    const { Item } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.pricingConfig() }));
+    return coerceSignupGrant(Item?.signupTokens);
+  } catch {
+    return coerceSignupGrant(undefined);
+  }
+}
 
 /**
  * Creates the member's profile and grants their opening tokens (PRD §3.1).
@@ -53,6 +66,7 @@ export const handler: PostConfirmationTriggerHandler = async (event) => {
   const day = now.slice(0, 10);
 
   const optional = (v?: string) => (v && v.trim() !== '' ? v.trim() : undefined);
+  const SIGNUP_TOKEN_GRANT = await signupGrant();
 
   try {
     await ddb.send(new TransactWriteCommand({

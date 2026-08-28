@@ -5,6 +5,7 @@ import * as k from '../../shared/keys';
 import {
   ALLOWED_BUNDLE_SIZES, coerceBundleSize, isAllowedBundleSize,
   PAYMENT_MODES, coercePaymentMode, isPaymentMode, RAZORPAY_SECRET_BY_MODE,
+  coerceSignupGrant, isSignupGrant, MIN_SIGNUP_TOKENS, MAX_SIGNUP_TOKENS,
 } from '../../shared/pricing';
 
 const ROOT_ADMIN_EMAIL = (process.env.ROOT_ADMIN_EMAIL ?? '').toLowerCase();
@@ -223,6 +224,8 @@ async function adminPricingConfig() {
   return {
     tokensPerBundle: coerceBundleSize(Item?.tokensPerBundle),
     allowedSizes: [...ALLOWED_BUNDLE_SIZES],
+    signupTokens: coerceSignupGrant(Item?.signupTokens),
+    signupRange: [MIN_SIGNUP_TOKENS, MAX_SIGNUP_TOKENS],
     updatedAt: Item?.updatedAt ?? null,
     updatedBy: Item?.updatedBy ?? null,
   };
@@ -240,14 +243,16 @@ async function adminSetTokensPerBundle(admin: string, tokens: number) {
     throw new Error(`Tokens per bundle must be one of ${ALLOWED_BUNDLE_SIZES.join(', ')}.`);
   }
   const now = new Date().toISOString();
+  const { Item: prev } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.pricingConfig() }));
   await ddb.send(new PutCommand({
     TableName: TABLE_NAME,
     Item: {
-      ...k.pricingConfig(),
-      entityType: 'CONFIG',
+      ...k.pricingConfig(), entityType: 'CONFIG',
       tokensPerBundle: tokens,
-      updatedAt: now,
-      updatedBy: admin,
+      // Both settings live in one item, so a Put must carry the other or
+      // changing one would silently reset the other to its default.
+      signupTokens: coerceSignupGrant(prev?.signupTokens),
+      updatedAt: now, updatedBy: admin,
     },
   }));
   // Pricing changes are audited like balance changes are — who, what, when.
@@ -302,6 +307,33 @@ async function adminSetPaymentMode(admin: string, mode: string) {
   return adminPaymentConfig();
 }
 
+/** Applies to accounts created from now on; existing balances are untouched. */
+async function adminSetSignupTokens(admin: string, tokens: number) {
+  if (!isSignupGrant(tokens)) {
+    throw new Error(`Sign-up tokens must be a whole number between ${MIN_SIGNUP_TOKENS} and ${MAX_SIGNUP_TOKENS}.`);
+  }
+  const now = new Date().toISOString();
+  const { Item } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.pricingConfig() }));
+  await ddb.send(new PutCommand({
+    TableName: TABLE_NAME,
+    Item: {
+      ...k.pricingConfig(), entityType: 'CONFIG',
+      // Preserve the sibling setting — this item holds both.
+      tokensPerBundle: coerceBundleSize(Item?.tokensPerBundle),
+      signupTokens: tokens, updatedAt: now, updatedBy: admin,
+    },
+  }));
+  await ddb.send(new PutCommand({
+    TableName: TABLE_NAME,
+    Item: {
+      ...k.transaction('CONFIG', now), entityType: 'TXN', delta: 0,
+      reason: k.TXN_REASON.PRICING_CHANGED,
+      note: `signupTokens set to ${tokens}`, actorId: admin, createdAt: now,
+    },
+  }));
+  return adminPricingConfig();
+}
+
 export const handler = async (event: AppSyncResolverEvent<any>) => {
   const admin = assertAdmin(event);
   const field = (event as any).info?.fieldName;
@@ -315,6 +347,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'adminPaymentConfig': return adminPaymentConfig();
     case 'adminSetPaymentMode': return adminSetPaymentMode(admin, args.mode);
     case 'adminSetTokensPerBundle': return adminSetTokensPerBundle(admin, args.tokens);
+    case 'adminSetSignupTokens': return adminSetSignupTokens(admin, args.tokens);
     case 'adminAdjustTokens': return adminAdjustTokens(admin, args.userId, args.delta, args.reason);
     default: throw new Error(`Unknown field ${field}`);
   }

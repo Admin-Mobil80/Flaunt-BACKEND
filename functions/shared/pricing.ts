@@ -126,3 +126,30 @@ export const RAZORPAY_SECRET_BY_MODE: Record<PaymentMode, string> = {
   test: 'cloudmeter/razorpay_dev',
   live: 'cloudmeter/razorpay_prod',
 };
+
+
+/**
+ * Tokens granted on sign-up. Configurable from BMS.
+ *
+ * Lowering it is how the payment flow gets exercised: at ten tokens a new
+ * account has to send ten invitations before it ever sees a purchase screen, so
+ * testing the gateway means either burning tokens or waiting. At one, the
+ * second invitation hits the paywall.
+ */
+export const DEFAULT_SIGNUP_TOKENS = 10;
+export const MIN_SIGNUP_TOKENS = 1;
+export const MAX_SIGNUP_TOKENS = 10;
+
+export function isSignupGrant(n: unknown): n is number {
+  return typeof n === 'number' && Number.isInteger(n)
+    && n >= MIN_SIGNUP_TOKENS && n <= MAX_SIGNUP_TOKENS;
+}
+
+/**
+ * Falls back to the default rather than throwing. A bad stored value must not
+ * be able to grant zero tokens — an account that cannot send a single
+ * invitation has nothing to do — nor an unbounded number.
+ */
+export function coerceSignupGrant(n: unknown): number {
+  return isSignupGrant(n) ? n : DEFAULT_SIGNUP_TOKENS;
+}

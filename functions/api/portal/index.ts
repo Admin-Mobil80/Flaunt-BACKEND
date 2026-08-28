@@ -1,8 +1,9 @@
 import type { AppSyncResolverEvent } from 'aws-lambda';
-import { QueryCommand, GetCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { QueryCommand, GetCommand, TransactWriteCommand, UpdateCommand, PutCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'node:crypto';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
-import { priceForCountry, formatMinor, coerceBundleSize } from '../../shared/pricing';
+import { priceForCountry, formatMinor, coerceBundleSize, coercePaymentMode } from '../../shared/pricing';
+import { credentials, createOrder } from '../../shared/razorpay';
 import * as k from '../../shared/keys';
 import { send, invitationEmail, refundEmail, gatekeeperEmail, introForwardEmail } from '../../shared/email';
 import {
@@ -1095,6 +1096,75 @@ async function declineIntroduction(userId: string, inviteId: string) {
   return shapeInvite({ ...inv, status });
 }
 
+/**
+ * Opens a Razorpay order for one bundle.
+ *
+ * The amount is computed HERE from the caller's stored country, never taken
+ * from the client — a browser-supplied price is a browser-supplied discount.
+ *
+ * The order is recorded before it is returned, and that record is what the
+ * webhook checks. The Razorpay account is shared with CloudMeter, so both
+ * products' events carry a valid signature against the same shared secret: a
+ * valid signature proves the message came from Razorpay, not that the payment
+ * was ours. The order row is what proves the second part.
+ *
+ * Nothing is credited here. The browser can be closed, lied to, or replayed;
+ * only the webhook moves the balance.
+ */
+async function createPaymentOrder(userId: string) {
+  const profile = await loadProfile(userId);
+  const [{ Item: pricing }, { Item: payment }] = await Promise.all([
+    ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.pricingConfig() })),
+    ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.paymentConfig() })),
+  ]);
+
+  const tokens = coerceBundleSize(pricing?.tokensPerBundle);
+  const mode = coercePaymentMode(payment?.mode);
+  const price = priceForCountry(profile.country, tokens);
+  const creds = await credentials(mode);
+
+  const receipt = `flaunt-${userId.slice(0, 8)}-${Date.now()}`;
+  const order = await createOrder(creds, {
+    amountMinor: price.totalMinor,
+    currency: price.currency,
+    receipt,
+    notes: { userId, tokens: String(tokens), mode },
+  });
+
+  await ddb.send(new PutCommand({
+    TableName: TABLE_NAME,
+    Item: {
+      ...k.payment(order.id),
+      entityType: 'PAYMENT',
+      orderId: order.id,
+      userId,
+      currency: price.currency,
+      baseMinor: price.baseMinor,
+      taxMinor: price.taxMinor,
+      totalMinor: price.totalMinor,
+      tokens,
+      mode,
+      status: 'CREATED',
+      receipt,
+      createdAt: new Date().toISOString(),
+    },
+  }));
+
+  return {
+    orderId: order.id,
+    keyId: creds.keyId,
+    amountMinor: price.totalMinor,
+    currency: price.currency,
+    tokens,
+    mode,
+  };
+}
+
+async function paymentMode() {
+  const { Item } = await ddb.send(new GetCommand({ TableName: TABLE_NAME, Key: k.paymentConfig() }));
+  return coercePaymentMode(Item?.mode);
+}
+
 export const handler = async (event: AppSyncResolverEvent<any>) => {
   const field = (event as any).info?.fieldName;
   const userId = callerId(event);
@@ -1110,6 +1180,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'declineIntroduction': return declineIntroduction(userId, args.inviteId);
     case 'myInvitations': return myInvitations(userId);
     case 'tokenPrice': return tokenPrice(userId);
+    case 'paymentMode': return paymentMode();
     case 'invitation': return invitation(userId, args.inviteId);
     case 'profile': return profile(userId, args.userId);
     case 'connectionsOf': return connectionsOf(userId, args.userId);
@@ -1119,6 +1190,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'removeConnection': return removeConnection(userId, args.userId);
     case 'sendInvitation': return sendInvitation(userId, args.email);
     case 'updateProfile': return updateProfile(userId, args);
+    case 'createPaymentOrder': return createPaymentOrder(userId);
     // Name search needs the GSI3 NAME# namespace and the degree walk; until
     // that lands it returns nothing rather than something invented.
     case 'searchPeople': return [];

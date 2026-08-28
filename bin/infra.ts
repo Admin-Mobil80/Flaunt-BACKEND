@@ -7,6 +7,7 @@ import { AuthStack } from '../lib/auth-stack';
 import { BmsAuthStack } from '../lib/bms-auth-stack';
 import { ApiStack } from '../lib/api-stack';
 import { InvitesStack } from '../lib/invites-stack';
+import { BillingStack } from '../lib/billing-stack';
 import { CiDeployStack } from '../lib/ci-deploy-stack';
 import { EnvName } from '../lib/env-config';
 
@@ -62,6 +63,12 @@ stacks.push(dataStack);
 // The apex serves the app directly rather than bouncing to www: someone typing
 // the short name is the commonest arrival there is, and a redirect costs them a
 // round trip to reach the same page. One distribution, one cache, one deploy.
+stacks.push(new BillingStack(app, 'FlauntBillingStackProd', {
+  env,
+  envName,
+  table: dataStack.table,
+}));
+
 stacks.push(new InvitesStack(app, 'FlauntInvitesStackProd', {
   env,
   envName,

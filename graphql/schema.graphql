@@ -111,6 +111,16 @@ type IntroductionRequest {
   targetUserId: ID!
 }
 
+type PaymentOrder {
+  orderId: ID!
+  # The publishable key Razorpay Checkout is opened with. Never the secret.
+  keyId: String!
+  amountMinor: Int!
+  currency: String!
+  tokens: Int!
+  mode: String!
+}
+
 type AdminUser @aws_cognito_user_pools {
   userId: ID!
   name: String!
@@ -124,6 +134,8 @@ type AdminUser @aws_cognito_user_pools {
 type PricingConfig @aws_cognito_user_pools {
   tokensPerBundle: Int!
   allowedSizes: [Int!]!
+  signupTokens: Int!
+  signupRange: [Int!]!
   updatedAt: String
   updatedBy: String
 }
@@ -154,6 +166,8 @@ type Query {
   gatekeeperRequests: [IntroductionRequest!]!
   myInvitations: [Invitation!]!
   tokenPrice: BundlePrice!
+  # "test" or "live" — the app says which, rather than implying real money moves.
+  paymentMode: String!
   # The invitation named by a link, returned only to the address it was sent to.
   invitation(inviteId: ID!): Invitation
   profile(userId: ID!): Profile
@@ -192,6 +206,9 @@ type Mutation {
   # forwarded request into a real introduction.
   approveIntroduction(inviteId: ID!, note: String): Invitation!
   declineIntroduction(inviteId: ID!): Invitation!
+  # Creates a Razorpay order for one token bundle, priced from the caller's own
+  # country. Tokens are credited by the webhook, never by the browser.
+  createPaymentOrder: PaymentOrder!
   updateProfile(
     name: String
     designation: String
@@ -204,6 +221,8 @@ type Mutation {
   # How many tokens a bundle contains. The amount charged does not change —
   # only what it buys. Restricted to 25, 50, 75 or 100.
   adminSetTokensPerBundle(tokens: Int!): PricingConfig! @aws_cognito_user_pools
+  # How many tokens a new account is granted. 1–10.
+  adminSetSignupTokens(tokens: Int!): PricingConfig! @aws_cognito_user_pools
   # Switches which Razorpay environment the billing integration uses. "live"
   # means real cards are charged.
   adminSetPaymentMode(mode: String!): PaymentConfig! @aws_cognito_user_pools
