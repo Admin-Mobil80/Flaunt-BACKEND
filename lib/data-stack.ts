@@ -15,8 +15,11 @@ export interface DataStackProps extends StackProps, EnvProps {}
  * BMS reads photos but never writes them.
  */
 function uploadOrigins(envName: EnvProps['envName']): string[] {
-  const host = `${subdomainPrefix(envName)}www.flaunt.network`;
-  return [`https://${host}`];
+  // BOTH hostnames. The distribution answers on the apex and on www, and a
+  // member who typed the shorter one had their upload blocked by a preflight
+  // the browser reported only as "Load failed".
+  const p = subdomainPrefix(envName);
+  return [`https://${p}flaunt.network`, `https://${p}www.flaunt.network`];
 }
 
 

@@ -285,6 +285,24 @@ var API_URL = '__GRAPHQL_URL__';
 var PHOTO_BASE = '__PHOTO_BASE__';
 
 /**
+ * Offer the camera only where there is one worth opening.
+ *
+ * `capture` makes a file input go straight to the camera and skips the
+ * library, so it must never replace the chooser — it sits beside it. On a
+ * laptop the attribute is ignored and the button would just be a second
+ * identical file picker, so it is not shown at all.
+ */
+var HAS_CAMERA = (function () {
+  try {
+    return matchMedia('(pointer: coarse)').matches
+      && !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia);
+  } catch (e) { return false; }
+})();
+
+var CAMERA = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"
+  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>`;
+
+/**
  * A person's avatar: their photo if they have one, their initials if not.
  *
  * Initials are the equal-footing fallback rather than a placeholder — nobody
@@ -309,7 +327,7 @@ function snippet(text, max) {
 function degreeChip(degree) {
   const first = degree === 1;
   return `<span class="chip" style="border-color:${first ? 'var(--good-line)' : 'var(--rule-2)'};
-    background:${first ? 'var(--good-wash)' : 'var(--sunk)'};padding:2px 8px;white-space:nowrap;">
+    background:${first ? 'var(--good-wash)' : 'var(--sunk)'};padding:2px 7px;white-space:nowrap;flex:none;">
     <span class="dot" style="background:${first ? 'var(--good)' : 'var(--ghost)'};"></span>
     <span class="lbl" style="color:${first ? 'var(--good)' : 'var(--ink-soft)'};font-size:9.5px;">${first ? 'Connected' : '2nd degree'}</span></span>`;
 }
@@ -945,8 +963,8 @@ function vProfile(id) {
     `}
 
     ${p.degree === 1 && (v.tab || 'details') === 'connections' ? `<div style="display:flex;flex-direction:column;gap:0;">
-      <div class="lrow hide-sm" style="grid-template-columns:26px minmax(110px,1fr) minmax(0,1.3fr) 110px 22px;border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
-        <span></span><span class="lbl">Name</span><span class="lbl">Role</span><span class="lbl">Description</span><span class="lbl" style="text-align:right;">Relationship</span><span></span>
+      <div class="lrow hide-sm" style="grid-template-columns:26px minmax(104px,.95fr) minmax(0,1.05fr) minmax(0,1.2fr) 124px 22px;border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
+        <span></span><span class="lbl">Name</span><span class="lbl">Role</span><span class="lbl">Description</span><span class="lbl">Relationship</span><span></span>
       </div>
       ${v.theirsLoading ? `<p style="margin:14px 0;font-size:13px;color:var(--ink-soft);">Loading…</p>` : ''}
       ${v.theirs && v.theirs.length ? v.theirs.map((c) => {
@@ -955,12 +973,12 @@ function vProfile(id) {
         // token, so it belongs on the page that shows who the person is.
         return `<div class="lrow lrow-click" onclick="S.viewing=null;go('#/p/${c.userId}')" role="link" tabindex="0"
             onkeydown="if(event.key==='Enter'){S.viewing=null;go('#/p/${c.userId}')}"
-            style="grid-template-columns:26px minmax(104px,.95fr) minmax(0,1.05fr) minmax(0,1.2fr) 104px 22px;">
+            style="grid-template-columns:26px minmax(104px,.95fr) minmax(0,1.05fr) minmax(0,1.2fr) 124px 22px;">
           ${avatarHtml(c, 26, 'background:#F3EDE4;')}
           <span class="trunc" style="font-family:var(--serif);font-size:15px;">${esc(c.name)}</span>
           <span class="trunc hide-sm" style="font-size:12.5px;color:var(--ink-soft);">${esc(crole || '—')}</span>
           <span class="trunc hide-sm" style="font-size:12px;color:var(--faint);">${esc(snippet(c.bio))}</span>
-          <span style="display:flex;justify-content:flex-end;">${degreeChip(c.degree)}</span>
+          <span style="display:flex;justify-content:flex-start;">${degreeChip(c.degree)}</span>
           <span style="color:var(--ghost);display:flex;justify-content:flex-end;">${CHEV}</span>
         </div>`;
       }).join('') : (v.theirs && v.theirs.length === 0
@@ -1913,9 +1931,13 @@ function vProfileEdit() {
         <span class="lbl">Photo</span>
         <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
           <label class="btn ghost" style="cursor:pointer;padding:7px 14px;font-size:12.5px;">
-            ${S.photoBusy ? 'Uploading…' : (m.photoAt ? 'Replace' : 'Upload a photo')}
+            ${S.photoBusy ? 'Uploading…' : (m.photoAt ? 'Replace' : 'Choose a photo')}
             <input type="file" accept="image/*" ${S.photoBusy ? 'disabled' : ''} onchange="uploadPhoto(this)" style="display:none;">
           </label>
+          ${HAS_CAMERA ? `<label class="btn ghost" style="cursor:pointer;padding:7px 14px;font-size:12.5px;display:flex;align-items:center;gap:7px;">
+            ${CAMERA}Take one
+            <input type="file" accept="image/*" capture="user" ${S.photoBusy ? 'disabled' : ''} onchange="uploadPhoto(this)" style="display:none;">
+          </label>` : ''}
           ${m.photoAt ? `<button type="button" class="rowbtn" style="opacity:1;" ${S.photoBusy ? 'disabled' : ''} onclick="removePhoto()">Remove</button>` : ''}
         </div>
         <span style="font-size:11.5px;color:var(--faint);">Optional. Squared and resized on your device before it is sent.</span>
