@@ -1,10 +1,10 @@
 import { SecretsManagerClient, GetSecretValueCommand } from '@aws-sdk/client-secrets-manager';
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { RAZORPAY_SECRET_BY_MODE, PaymentMode } from './pricing';
+import { RAZORPAY_SECRET_BY_MODE, WEBHOOK_SECRET_BY_MODE, PaymentMode } from './pricing';
 
 const secrets = new SecretsManagerClient({});
 
-export interface RazorpayCreds { keyId: string; keySecret: string; webhookSecret: string; }
+export interface RazorpayCreds { keyId: string; keySecret: string; }
 
 /**
  * Cached per mode for the life of the container. Secrets Manager is charged per
@@ -20,12 +20,30 @@ export async function credentials(mode: PaymentMode): Promise<RazorpayCreds> {
   const { SecretString } = await secrets.send(new GetSecretValueCommand({ SecretId: name }));
   if (!SecretString) throw new Error(`Secret ${name} is empty`);
   const parsed = JSON.parse(SecretString);
-  const creds: RazorpayCreds = {
-    keyId: parsed.keyId, keySecret: parsed.keySecret, webhookSecret: parsed.webhookSecret,
-  };
+  const creds: RazorpayCreds = { keyId: parsed.keyId, keySecret: parsed.keySecret };
   if (!creds.keyId || !creds.keySecret) throw new Error(`Secret ${name} is missing keyId/keySecret`);
   cache.set(mode, creds);
   return creds;
+}
+
+const webhookCache = new Map<PaymentMode, string>();
+
+/**
+ * The signing secret for this mode, from Flaunt's own secret.
+ *
+ * Fails closed: an unset or blank secret throws rather than returning something
+ * empty, because verifyWebhook treats a blank secret as "reject everything" and
+ * the resulting silence would look exactly like Razorpay never calling.
+ */
+export async function webhookSecretFor(mode: PaymentMode): Promise<string> {
+  const hit = webhookCache.get(mode);
+  if (hit) return hit;
+  const name = WEBHOOK_SECRET_BY_MODE[mode];
+  const { SecretString } = await secrets.send(new GetSecretValueCommand({ SecretId: name }));
+  const value = String(SecretString ?? '').trim();
+  if (!value) throw new Error(`Secret ${name} is empty — set it to the signing secret from the Razorpay webhook`);
+  webhookCache.set(mode, value);
+  return value;
 }
 
 export interface RazorpayOrder { id: string; amount: number; currency: string; status: string; }

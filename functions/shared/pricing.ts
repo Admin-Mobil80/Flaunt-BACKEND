@@ -127,6 +127,21 @@ export const RAZORPAY_SECRET_BY_MODE: Record<PaymentMode, string> = {
   live: 'cloudmeter/razorpay_prod',
 };
 
+/**
+ * The webhook signing secret is Flaunt's own, even though the API keys are
+ * shared with CloudMeter.
+ *
+ * A webhook secret is per-endpoint, not per-account, and sharing one would let
+ * either application forge events for the other and make rotating one break the
+ * other. The shared secret is also not usable: its webhookSecret field holds
+ * CloudMeter's API Gateway URL rather than a signing key, so every Flaunt event
+ * would fail verification against it.
+ */
+export const WEBHOOK_SECRET_BY_MODE: Record<PaymentMode, string> = {
+  test: 'flaunt/razorpay_webhook_test',
+  live: 'flaunt/razorpay_webhook_live',
+};
+
 
 /**
  * Tokens granted on sign-up. Configurable from BMS.

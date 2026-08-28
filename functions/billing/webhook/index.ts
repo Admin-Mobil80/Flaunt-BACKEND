@@ -1,7 +1,7 @@
 import type { APIGatewayProxyEventV2, APIGatewayProxyResultV2 } from 'aws-lambda';
 import { GetCommand, TransactWriteCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
-import { credentials, verifyWebhook } from '../../shared/razorpay';
+import { verifyWebhook , webhookSecretFor } from '../../shared/razorpay';
 import { coercePaymentMode } from '../../shared/pricing';
 import * as k from '../../shared/keys';
 
@@ -37,9 +37,9 @@ export const handler = async (event: APIGatewayProxyEventV2): Promise<APIGateway
     TableName: TABLE_NAME, Key: k.paymentConfig(),
   }));
   const mode = coercePaymentMode(paymentCfg?.mode);
-  const creds = await credentials(mode);
+  const signingSecret = await webhookSecretFor(mode);
 
-  if (!verifyWebhook(raw, signature, creds.webhookSecret)) {
+  if (!verifyWebhook(raw, signature, signingSecret)) {
     console.warn(JSON.stringify({ msg: 'webhook signature rejected', mode }));
     return { statusCode: 401, body: 'invalid signature' };
   }

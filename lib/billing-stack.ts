@@ -6,6 +6,7 @@ import * as lambdaNode from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as apigw from 'aws-cdk-lib/aws-apigatewayv2';
 import { HttpLambdaIntegration } from 'aws-cdk-lib/aws-apigatewayv2-integrations';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as path from 'path';
 import { EnvProps, suffix } from './env-config';
@@ -45,8 +46,35 @@ export class BillingStack extends Stack {
     });
     table.grantReadWriteData(webhookFn);
 
+    /**
+     * Flaunt's own webhook signing secrets, one per Razorpay environment.
+     *
+     * CDK generates the value; nobody has to invent one and it never travels
+     * through a chat or a commit. Read it out of Secrets Manager and paste it
+     * into the Razorpay dashboard when creating the webhook.
+     *
+     * generateSecretString only runs at creation, so redeploys never overwrite
+     * a value that has been matched to a live webhook. RETAIN for the same
+     * reason: destroying the stack must not silently break payment
+     * verification for a webhook Razorpay still holds.
+     */
+    const signingSecrets = (['test', 'live'] as const).map((m) =>
+      new secretsmanager.Secret(this, `RazorpayWebhookSecret${m === 'test' ? 'Test' : 'Live'}`, {
+        secretName: `flaunt/razorpay_webhook_${m}`,
+        description: `Razorpay webhook signing secret for Flaunt (${m} mode). Must match the secret set on the webhook in the Razorpay dashboard.`,
+        removalPolicy: RemovalPolicy.RETAIN,
+        generateSecretString: {
+          passwordLength: 32,
+          // Razorpay echoes this into an HMAC key; keep it to characters that
+          // survive a copy-paste through the dashboard without escaping.
+          excludePunctuation: true,
+          excludeCharacters: ' ',
+        },
+      }));
+
     // Both credential sets: the handler picks by the stored payment mode, and a
-    // mode switch must not need a redeploy to take effect.
+    // mode switch must not need a redeploy to take effect. The API keys stay
+    // shared with CloudMeter; only the signing secrets are Flaunt's own.
     webhookFn.addToRolePolicy(new iam.PolicyStatement({
       actions: ['secretsmanager:GetSecretValue'],
       resources: [
@@ -54,6 +82,7 @@ export class BillingStack extends Stack {
         `arn:aws:secretsmanager:${this.region}:${this.account}:secret:cloudmeter/razorpay_prod-*`,
       ],
     }));
+    signingSecrets.forEach((sec) => sec.grantRead(webhookFn));
 
     const api = new apigw.HttpApi(this, 'BillingApi', {
       apiName: `flaunt-billing${sfx}`,
@@ -66,5 +95,7 @@ export class BillingStack extends Stack {
     });
 
     new CfnOutput(this, 'WebhookUrl', { value: `${api.apiEndpoint}/webhooks/razorpay` });
+    signingSecrets.forEach((sec, i) =>
+      new CfnOutput(this, `WebhookSecretArn${i}`, { value: sec.secretArn }));
   }
 }
