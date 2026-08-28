@@ -922,8 +922,11 @@ function vInvitations() {
   return topbar('invitations') + `<div class="wrap"><div class="col page">
     <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
       <h1 class="big">Invitations</h1>
-      ${refunded ? `<div style="display:flex;align-items:center;gap:8px;color:var(--good);">
-        ${RETURN}<span style="font-size:13px;">${refunded} token${refunded===1?'':'s'} returned to you</span></div>` : ''}
+      <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
+        ${refunded ? `<div style="display:flex;align-items:center;gap:8px;color:var(--good);">
+          ${RETURN}<span style="font-size:13px;">${refunded} token${refunded===1?'':'s'} returned to you</span></div>` : ''}
+        <button class="btn" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>
+      </div>
     </div>
     ${dirTabs(invTab, 'invTab', [['inbox','Waiting on you',waitingOnYou.length],['sent','Sent by you',sent.length]])}
 
@@ -950,9 +953,8 @@ function vInvitations() {
     </div>
     <div style="display:flex;flex-direction:column;">${rows || `<p style="margin:24px 0;font-size:13.5px;color:var(--faint);">Nothing in this state.</p>`}</div>`
     : emptyState('No invitations yet',
-        'Every connection on Flaunt starts with one. Sending costs a token, and you get it back if it is declined or goes unanswered for seven days.',
-        `<button class="btn" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>`)}
-    ${sent.length ? `<button class="btn" style="align-self:flex-start;" onclick="openInvite()"><span style="display:flex;">${COIN}</span>Send an invitation</button>` : ''}`}
+        'Every connection on Flaunt starts with one. Sending costs a token, and you get it back if it is declined or goes unanswered for seven days.', '')}
+`}
   </div></div>`;
 }
 
