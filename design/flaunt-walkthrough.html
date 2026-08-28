@@ -2472,6 +2472,13 @@ async function signUp() {
   const designation = val('su-designation');
   const country = val('su-country');
   const bioAtSignup = val('su-bio');
+  // Read with the rest, BEFORE anything re-renders. These two were read after
+  // the busy-state render() below, which rebuilds the form from state and
+  // therefore hands back empty inputs — so organisation and location were
+  // silently dropped on every account ever created. The same mistake was fixed
+  // in saveProfile and survived here.
+  const org = val('su-org');
+  const loc = val('su-location');
   // The form has always said this field is required and never enforced it.
   // An account created without one cannot save its profile at all afterwards:
   // updateProfile validates every field before writing, so an empty bio
@@ -2487,7 +2494,6 @@ async function signUp() {
     { Name: 'custom:country', Value: country || 'IN' },
     { Name: 'custom:designation', Value: designation }
   ];
-  const org = val('su-org'), loc = val('su-location');
   if (org) attrs.push({ Name: 'custom:organisation', Value: org });
   if (loc) attrs.push({ Name: 'custom:location', Value: loc });
   attrs.push({ Name: 'custom:bio', Value: bioAtSignup });
