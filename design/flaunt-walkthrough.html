@@ -130,6 +130,16 @@ h1.big { margin:0; font-family:var(--serif); font-size:clamp(26px,4vw,32px); fon
 .bms-nav button[aria-current="true"] { background:var(--bms-accent-wash); color:var(--bms-accent);
   font-weight:600; border-left-color:var(--bms-accent); }
 .bms-main { flex-grow:1; padding:22px 24px 48px; display:flex; flex-direction:column; gap:18px; min-width:0; }
+.sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
+  clip:rect(0 0 0 0); white-space:nowrap; border:0; }
+.sk { background:linear-gradient(90deg,var(--sunk) 25%,var(--rule) 37%,var(--sunk) 63%);
+  background-size:400% 100%; animation:shimmer 1.4s ease-in-out infinite; border-radius:2px; }
+.bms .sk, .sk-b { background:linear-gradient(90deg,#EDF0F3 25%,#E1E6EB 37%,#EDF0F3 63%);
+  background-size:400% 100%; animation:shimmer 1.4s ease-in-out infinite; border-radius:2px; }
+@keyframes shimmer { 0% { background-position:100% 0; } 100% { background-position:-100% 0; } }
+/* A moving placeholder is worse than a still one for anyone who needs motion
+   reduced; the block still reads as "not yet here" without the animation. */
+@media (prefers-reduced-motion: reduce) { .sk, .sk-b { animation:none; } }
 .stats { display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:1px;
   background:var(--bms-rule); border:1px solid var(--bms-rule); }
 .stats > div { background:var(--bms-panel); padding:13px 16px; display:flex; flex-direction:column; gap:3px; }
@@ -947,7 +957,7 @@ async function setBundleSize(tokens) {
 
 /* ---------- BMS ---------- */
 function bmsShell(active, inner) {
-  const nav = [['users','User ledger'],['invitations','Invitations'],['settings','Settings']].map(([k,l]) =>
+  const nav = [['users','User ledger'],['invitations','Invitations'],['transactions','Transactions'],['settings','Settings']].map(([k,l]) =>
     `<button onclick="go('#/bms/${k}')" ${active===k?'aria-current="true"':''}>${l}</button>`).join('');
   return `<div class="bms">
     <header class="bms-top">
@@ -967,6 +977,22 @@ function bmsShell(active, inner) {
       <main class="bms-main">${inner}</main>
     </div>
   </div>`;
+}
+
+/** The console's own skeleton: stat tiles and table rows, in their real shape. */
+function vBmsLoading() {
+  const cell = (w) => `<td><div class="sk-b" style="height:10px;width:${w};"></div></td>`;
+  const row = `<tr>${cell('120px')}${cell('160px')}${cell('28px')}${cell('30px')}${cell('26px')}${cell('74px')}${cell('90px')}</tr>`;
+  const tile = `<div><div class="sk-b" style="height:9px;width:76px;"></div>
+    <div class="sk-b" style="height:19px;width:54px;margin-top:6px;"></div></div>`;
+  return bmsShell('users', `
+    <div style="display:flex;flex-direction:column;gap:5px;">
+      <div class="sk-b" style="height:17px;width:150px;"></div>
+      <div class="sk-b" style="height:10px;width:190px;"></div>
+    </div>
+    <div class="stats">${tile.repeat(5)}</div>
+    <div class="tblwrap"><table><tbody>${row.repeat(10)}</tbody></table></div>
+    <span class="sr-only" role="status" aria-live="polite">Loading admin data</span>`);
 }
 
 function vBmsUsers() {
@@ -1024,6 +1050,97 @@ function vBmsUsers() {
     ${pager}
 
     <p style="margin:0;font-size:11.5px;color:var(--bms-mute);">Every adjustment is written to the user&rsquo;s token ledger with your address as the actor.</p>`);
+}
+
+const TX_PAGE = 50;
+
+/** Payments are loaded on demand — the ledger screen should not wait on them. */
+async function loadTx(page) {
+  S.txPage = Math.max(0, page); S.txLoading = true; S.txError = null; render();
+  try {
+    const d = await gql(`query Tx($l:Int!,$o:Int!){ adminPayments(limit:$l, offset:$o){
+      total paidCount hasMore gross { currency minor }
+      items { orderId paymentId userId memberName memberEmail status mode tokens currency totalMinor createdAt paidAt } } }`,
+      { l: TX_PAGE, o: S.txPage * TX_PAGE });
+    S.tx = d.adminPayments;
+  } catch (e) { S.txError = e.message; }
+  finally { S.txLoading = false; render(); }
+}
+
+/** Minor units to a readable amount. Money is never held as a float. */
+function money(cur, minor) {
+  const sym = cur === 'INR' ? '\u20B9' : cur === 'USD' ? '$' : '';
+  return sym + (Number(minor || 0) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function vBmsTx() {
+  if (S.tx === undefined && !S.txLoading && !S.txError) { loadTx(0); }
+  const t = S.tx;
+  const page = S.txPage || 0;
+
+  const badge = (st) => {
+    const paid = st === 'PAID';
+    return `<span style="display:inline-block;font-size:10.5px;letter-spacing:.04em;padding:2px 7px;
+      border:1px solid ${paid ? 'var(--bms-good-line)' : 'var(--bms-warn-line)'};
+      background:${paid ? 'var(--bms-good-wash)' : 'var(--bms-warn-wash)'};
+      color:${paid ? 'var(--bms-good)' : 'var(--bms-warn)'};">${paid ? 'PAID' : esc(st)}</span>`;
+  };
+
+  const rows = (t?.items || []).map((p) => `<tr>
+    <td class="mono" style="font-size:11.5px;color:var(--bms-mute);white-space:nowrap;">${esc(String(p.createdAt).slice(0,10))}<br><span style="color:var(--bms-rule-2);">${esc(String(p.createdAt).slice(11,19))}</span></td>
+    <td style="font-size:12.5px;font-weight:500;">${esc(p.memberName || 'Unknown')}<br>
+      <span class="mono" style="font-size:11px;color:var(--bms-mute);font-weight:400;">${esc(p.memberEmail || '')}</span></td>
+    <td class="mono" style="font-size:13px;font-weight:600;white-space:nowrap;">${money(p.currency, p.totalMinor)}</td>
+    <td class="mono" style="font-size:12px;color:var(--bms-soft);">${p.tokens}</td>
+    <td>${badge(p.status)}</td>
+    <td class="mono" style="font-size:10.5px;color:var(--bms-mute);">${esc(p.mode)}</td>
+    <td class="mono" style="font-size:10.5px;color:var(--bms-mute);word-break:break-all;">${esc(p.orderId)}${
+      p.paymentId ? `<br><span style="color:var(--bms-soft);">${esc(p.paymentId)}</span>` : ''}</td>
+  </tr>`).join('');
+
+  const skel = `<tr>${'<td><div class="sk-b" style="height:10px;width:80%;"></div></td>'.repeat(7)}</tr>`.repeat(8);
+  const pages = t ? Math.max(1, Math.ceil(t.total / TX_PAGE)) : 1;
+
+  return bmsShell('transactions', `
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+      <div style="display:flex;flex-direction:column;gap:3px;">
+        <h1 style="margin:0;font-size:18px;font-weight:600;letter-spacing:-.01em;">Transactions</h1>
+        <span style="font-size:12px;color:var(--bms-mute);">Every payment order, paid or not.</span>
+      </div>
+      <button class="pill" onclick="loadTx(${page})" ${S.txLoading ? 'disabled' : ''}>Refresh</button>
+    </div>
+
+    ${t ? `<div class="stats">
+      <div><span class="lbl">Orders</span><span class="mono" style="font-size:19px;font-weight:600;">${t.total}</span></div>
+      <div><span class="lbl">Paid</span><span class="mono" style="font-size:19px;font-weight:600;color:var(--bms-good);">${t.paidCount}</span></div>
+      <div><span class="lbl">Unpaid</span><span class="mono" style="font-size:19px;font-weight:600;">${t.total - t.paidCount}</span>
+        <span style="font-size:10.5px;color:var(--bms-mute);">abandoned or undelivered</span></div>
+      ${(t.gross.length ? t.gross : [{currency:'INR',minor:0}]).map((g) => `<div>
+        <span class="lbl">Collected \u00b7 ${esc(g.currency)}</span>
+        <span class="mono" style="font-size:19px;font-weight:600;">${money(g.currency, g.minor)}</span></div>`).join('')}
+    </div>` : ''}
+
+    ${S.txError ? `<div style="border:1px solid var(--bms-bad-line);background:var(--bms-bad-wash);padding:18px 20px;
+      display:flex;flex-direction:column;gap:9px;align-items:flex-start;">
+      <span style="font-size:13.5px;font-weight:600;color:var(--bms-bad);">Could not load transactions</span>
+      <span style="font-size:12.5px;color:var(--bms-soft);">${esc(S.txError)}</span>
+      <button class="pill" onclick="loadTx(${page})">Try again</button></div>` : ''}
+
+    ${!S.txError && (S.txLoading || t) ? `<div class="tblwrap"><table>
+      <thead><tr><th>When</th><th>Member</th><th>Amount</th><th>Tokens</th><th>Status</th><th>Mode</th><th>Razorpay ids</th></tr></thead>
+      <tbody>${S.txLoading ? skel : (rows || `<tr><td colspan="7" style="padding:26px;font-size:13px;color:var(--bms-mute);">No payments yet. The first purchase on flaunt.network will appear here.</td></tr>`)}</tbody>
+    </table></div>` : ''}
+
+    ${t && pages > 1 ? `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <span style="font-size:11.5px;color:var(--bms-mute);">Showing ${page*TX_PAGE+1}\u2013${Math.min((page+1)*TX_PAGE, t.total)} of ${t.total}</span>
+      <span style="display:flex;align-items:center;gap:8px;">
+        <button class="pill" onclick="loadTx(${page-1})"${page===0||S.txLoading?' disabled':''}>Previous</button>
+        <span class="mono" style="font-size:11.5px;color:var(--bms-soft);">Page ${page+1} of ${pages}</span>
+        <button class="pill" onclick="loadTx(${page+1})"${!t.hasMore||S.txLoading?' disabled':''}>Next</button>
+      </span></div>` : ''}
+
+    <p style="margin:0;font-size:11.5px;color:var(--bms-mute);max-width:80ch;">An order that stays unpaid is either an abandoned
+      checkout or a payment whose webhook never reached us. Cross-check the order id in the Razorpay dashboard to tell them apart.</p>`);
 }
 
 function vBmsSettings() {
@@ -1992,6 +2109,7 @@ function modalHtml() {
 function view() {
   if (APP === 'bms' && !signedIn()) return vBmsLogin();
   if (APP === 'portal' && !signedIn()) return vPortalAuth();
+  if (APP === 'bms' && signedIn() && !S.stats && !S.dataError) return vBmsLoading();
   if (APP === 'bms' && S.dataError) {
     return bmsShell('users', `<div style="border:1px solid var(--bms-bad-line);background:var(--bms-bad-wash);
         padding:22px 24px;display:flex;flex-direction:column;gap:10px;align-items:flex-start;">
@@ -2005,9 +2123,7 @@ function view() {
       'Could not load your account', S.dataError,
       `<button class="btn" onclick="S.dataError=null;S.me=null;render();">Try again</button>`)}</div></div>`;
   }
-  if (APP === 'portal' && !S.me) {
-    return `<div class="wrap"><div class="col"><p style="font-size:13.5px;color:var(--ink-soft);">Loading…</p></div></div>`;
-  }
+  if (APP === 'portal' && !S.me) return vPortalLoading();
   const h = location.hash || homeForApp();
   if (h === '#/signup') return vSignup();
   if (h === '#/welcome') return vWelcome();
@@ -2020,12 +2136,45 @@ function view() {
   if (h === '#/tokens') return vTokens();
   if (h === '#/bms/users') return vBmsUsers();
   if (h === '#/bms/invitations') return vBmsInv();
+  if (h === '#/bms/transactions') return vBmsTx();
   if (h === '#/bms/settings') return vBmsSettings();
 
   if (h.startsWith('#/p/')) return vProfile(h.slice(4));
   return APP === 'bms' ? vBmsUsers() : vNetwork();
 }
 function homeForApp() { return APP === 'bms' ? '#/bms/users' : '#/network'; }
+
+/**
+ * Shown while the first load is in flight.
+ *
+ * It mirrors the shape of the page that is coming — a heading, a few rows —
+ * rather than printing the word "Loading". A blank page with one grey word
+ * reads as a broken site; a page whose skeleton matches what arrives reads as a
+ * page that is nearly ready, and it stops the layout jumping when it lands.
+ */
+function vPortalLoading() {
+  const row = `<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--rule);">
+    <div class="sk" style="width:30px;height:30px;border-radius:50%;flex:none;"></div>
+    <div style="display:flex;flex-direction:column;gap:6px;flex:1;">
+      <div class="sk" style="height:11px;width:32%;"></div>
+      <div class="sk" style="height:9px;width:52%;"></div>
+    </div>
+    <div class="sk" style="height:9px;width:56px;flex:none;"></div>
+  </div>`;
+  return `<header class="top">
+      <div style="display:flex;align-items:center;gap:clamp(20px,4vw,44px);min-width:0;">
+        <span class="serif" style="font-size:23px;letter-spacing:.015em;">Flaunt</span>
+        <div class="sk" style="height:11px;width:190px;"></div>
+      </div>
+      <div class="sk" style="height:24px;width:104px;"></div>
+    </header>
+    <div class="wrap"><div class="col" style="gap:20px;">
+      <div class="sk" style="height:26px;width:230px;"></div>
+      <div class="sk" style="height:12px;width:340px;"></div>
+      <div style="margin-top:8px;">${row.repeat(6)}</div>
+      <span class="sr-only" role="status" aria-live="polite">Loading your network</span>
+    </div></div>`;
+}
 
 function renderNotice() {
   const el = document.getElementById('notice');

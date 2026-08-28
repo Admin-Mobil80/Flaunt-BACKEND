@@ -159,6 +159,38 @@ type PaymentConfig @aws_cognito_user_pools {
   updatedBy: String
 }
 
+type AdminPayment @aws_cognito_user_pools {
+  orderId: ID!
+  # Razorpay's payment id, present only once a payment actually succeeded.
+  paymentId: String
+  userId: ID!
+  memberName: String
+  memberEmail: String
+  # CREATED means an order we made that was never paid — an abandoned checkout,
+  # or a payment whose webhook never reached us.
+  status: String!
+  mode: String!
+  tokens: Int!
+  currency: String!
+  totalMinor: Int!
+  createdAt: String!
+  paidAt: String
+}
+
+type CurrencyTotal @aws_cognito_user_pools {
+  currency: String!
+  minor: Int!
+}
+
+type AdminPaymentPage @aws_cognito_user_pools {
+  items: [AdminPayment!]!
+  total: Int!
+  paidCount: Int!
+  hasMore: Boolean!
+  # Collected per currency, across every payment rather than the page shown.
+  gross: [CurrencyTotal!]!
+}
+
 type AdminStats @aws_cognito_user_pools {
   totalUsers: Int!
   usersIndia: Int!
@@ -194,6 +226,7 @@ type Query {
   adminUsers(limit: Int, offset: Int): [AdminUser!]! @aws_cognito_user_pools
   adminStats: AdminStats! @aws_cognito_user_pools
   adminInvitations(status: String): [Invitation!]! @aws_cognito_user_pools
+  adminPayments(limit: Int, offset: Int): AdminPaymentPage! @aws_cognito_user_pools
   adminPricingConfig: PricingConfig! @aws_cognito_user_pools
   adminPaymentConfig: PaymentConfig! @aws_cognito_user_pools
 }

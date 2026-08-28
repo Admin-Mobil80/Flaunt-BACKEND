@@ -151,6 +151,76 @@ async function adminStats() {
   };
 }
 
+/**
+ * Every payment order, newest first, with the member each one belongs to.
+ *
+ * Orders created but never paid are included deliberately. An abandoned
+ * checkout and a failed webhook delivery look identical from a balance alone,
+ * and telling them apart is most of what this screen is for: a CREATED row
+ * whose order is paid at Razorpay is a delivery that never landed.
+ */
+async function adminPayments(limit: number, offset: number) {
+  const rows: any[] = [];
+  let ExclusiveStartKey: any = undefined;
+  do {
+    const r: any = await ddb.send(new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: 'entityType = :t',
+      ExpressionAttributeValues: { ':t': 'PAYMENT' },
+      // status, mode, tokens and currency are all DynamoDB reserved words.
+      ProjectionExpression: 'orderId, paymentId, userId, #s, #m, #tk, #cur, totalMinor, createdAt, paidAt',
+      ExpressionAttributeNames: { '#s': 'status', '#m': 'mode', '#tk': 'tokens', '#cur': 'currency' },
+      ExclusiveStartKey,
+    }));
+    rows.push(...(r.Items ?? []));
+    ExclusiveStartKey = r.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+
+  rows.sort((x: any, y: any) => String(y.createdAt ?? '').localeCompare(String(x.createdAt ?? '')));
+
+  // Totals span every row, not the page: a summary that changed as you paged
+  // through it would be worse than no summary at all.
+  const gross = new Map<string, number>();
+  let paidCount = 0;
+  for (const p of rows) {
+    if (p.status !== 'PAID') continue;
+    paidCount++;
+    const cur = String(p.currency ?? '');
+    gross.set(cur, (gross.get(cur) ?? 0) + Number(p.totalMinor ?? 0));
+  }
+
+  const page = rows.slice(offset, offset + limit);
+
+  // One BatchGet for the page's members rather than a read per row.
+  const ids = [...new Set(page.map((p: any) => p.userId).filter(Boolean))] as string[];
+  const members = new Map<string, any>();
+  for (let i = 0; i < ids.length; i += 100) {
+    const chunk = ids.slice(i, i + 100).map((id) => k.user(id));
+    if (!chunk.length) break;
+    const got: any = await ddb.send(new BatchGetCommand({ RequestItems: { [TABLE_NAME]: { Keys: chunk } } }));
+    for (const m of (got.Responses?.[TABLE_NAME] ?? [])) {
+      members.set(String(m.PK).replace('USER#', ''), m);
+    }
+  }
+
+  return {
+    items: page.map((p: any) => {
+      const m = members.get(p.userId);
+      return {
+        orderId: p.orderId, paymentId: p.paymentId ?? null, userId: p.userId ?? '',
+        status: p.status ?? 'CREATED', mode: p.mode ?? '', tokens: Number(p.tokens ?? 0),
+        currency: p.currency ?? '', totalMinor: Number(p.totalMinor ?? 0),
+        createdAt: p.createdAt ?? '', paidAt: p.paidAt ?? null,
+        memberName: m?.name ?? null, memberEmail: m?.primaryEmail ?? null,
+      };
+    }),
+    total: rows.length,
+    paidCount,
+    hasMore: offset + limit < rows.length,
+    gross: [...gross.entries()].sort().map(([currency, minor]) => ({ currency, minor })),
+  };
+}
+
 async function adminInvitations(status?: string) {
   const statuses = status && status !== 'ALL' ? [status] : Object.values(k.INVITE_STATUS);
 
@@ -399,6 +469,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'adminUsers': return adminUsers(args.limit ?? 50, args.offset ?? 0);
     case 'adminStats': return adminStats();
     case 'adminInvitations': return adminInvitations(args.status);
+    case 'adminPayments': return adminPayments(args.limit ?? 50, args.offset ?? 0);
     case 'adminPricingConfig': return adminPricingConfig();
     case 'adminPaymentConfig': return adminPaymentConfig();
     case 'adminSetPaymentMode': return adminSetPaymentMode(admin, args.mode);
