@@ -59,13 +59,20 @@ button { font:inherit; color:inherit; cursor:pointer; }
 .top nav button[aria-current="true"] { color:var(--ink); font-weight:500; border-bottom:1.5px solid var(--accent); }
 /* The balance is the one number a member watches, so it is set as a value —
    coin, tabular numeral, small-caps unit — rather than as a status line. */
-.purse { display:flex; align-items:center; gap:9px; border:1px solid var(--rule-2);
-  padding:6px 12px; background:var(--raised); transition:border-color .14s, box-shadow .14s; }
-.purse:hover { border-color:var(--accent); box-shadow:0 2px 0 var(--sunk); }
-.purse:active { transform:translateY(1px); }
-.purse .n { font-family:var(--mono); font-size:14.5px; font-weight:600; letter-spacing:-.02em;
-  font-variant-numeric:tabular-nums; color:var(--ink); line-height:1; }
-.purse .u { font-size:9.5px; letter-spacing:.13em; text-transform:uppercase; color:var(--faint); }
+.purse { display:flex; align-items:baseline; gap:8px; border:1px solid var(--rule-2);
+  padding:5px 13px 6px; border-radius:2px;
+  background:linear-gradient(180deg, #FFFDFA 0%, var(--sunk) 100%);
+  box-shadow:inset 0 1px 0 #FFF, 0 1px 0 rgba(31,27,22,.04);
+  transition:border-color .14s, box-shadow .14s, background .14s; }
+.purse:hover { border-color:var(--accent); background:linear-gradient(180deg,#FFFDFA 0%,var(--accent-wash) 100%);
+  box-shadow:inset 0 1px 0 #FFF, 0 2px 0 rgba(110,43,43,.10); }
+.purse:active { transform:translateY(1px); box-shadow:inset 0 1px 2px rgba(31,27,22,.10); }
+/* The numeral is set in the display face: it is the one figure a member reads
+   on every screen, and the mono made it look like a system readout. */
+.purse .n { font-family:var(--serif); font-size:18px; font-weight:500; letter-spacing:-.01em;
+  font-variant-numeric:tabular-nums; color:var(--accent-deep); line-height:1; }
+.purse .u { font-size:9px; letter-spacing:.15em; text-transform:uppercase; color:var(--faint);
+  position:relative; top:-1px; }
 /* Running out is a state worth seeing before the invite dialog says so. */
 .purse.low { border-color:var(--warn-line); background:var(--warn-wash); }
 .purse.low .n, .purse.low .u { color:var(--warn); }
@@ -342,13 +349,13 @@ function topbar(active) {
     <div style="display:flex;align-items:center;gap:14px;">
       <button class="purse ${S.me && S.me.tokenBalance <= 3 ? 'low' : ''}" onclick="go('#/tokens')"
         title="${S.me && S.me.tokenBalance <= 3 ? 'Running low — buy more tokens' : 'Buy more tokens'}">
-        <span style="color:var(--accent);display:flex;">${COIN}</span>
+        <span style="color:var(--accent);display:flex;align-self:center;">${COIN}</span>
         <span class="n">${S.me ? S.me.tokenBalance : '—'}</span>
         <span class="u">token${S.me && S.me.tokenBalance === 1 ? '' : 's'}</span>
         <span class="add" aria-hidden="true">+</span>
       </button>
       <div class="who" id="user-menu" data-open="${S.userMenu ? 'true' : 'false'}">
-        <button class="who-btn" onclick="toggleUserMenu()" aria-haspopup="menu" aria-expanded="${S.userMenu ? 'true' : 'false'}"
+        <button class="who-btn" onclick="toggleUserMenu(event)" aria-haspopup="menu" aria-expanded="${S.userMenu ? 'true' : 'false'}"
           title="${esc((S.me && S.me.name) || '')}">${S.me ? initialsOf(S.me.name) : '·'}</button>
         ${!S.userMenu ? '' : `<div class="who-menu" role="menu">
           <div class="hd">
@@ -1718,6 +1725,12 @@ async function loadPortal() {
     S.invites = d.myInvitations || [];
     S.incoming = d.incomingInvitations || [];
     S.price = d.tokenPrice; S.payMode = d.paymentMode;
+    // The second-degree tab advertises a count, so fetch it once the page is
+    // usable rather than making someone open the tab to find out it is not
+    // empty. Deliberately not awaited: the network list should not wait on it.
+    if ((d.myConnections || []).length > 0 && S.second.length === 0 && !S.secondLoading) {
+      loadSecond(0).catch(function () {});
+    }
     if (!S.landed) {
       S.landed = true;
       const hasInvite = await loadInviteFromLink();
@@ -2663,7 +2676,19 @@ function render() {
     nf.setSelectionRange(nf.value.length, nf.value.length);
   }
 }
-function toggleUserMenu() { S.userMenu = !S.userMenu; render(); }
+/**
+ * The click must not reach the outside-click listener.
+ *
+ * render() replaces the DOM, so by the time this click bubbles to window the
+ * event target is a detached node — the wrapper cannot contain it, the listener
+ * reads that as a click outside, and the menu shuts in the same gesture that
+ * opened it. From the outside it looked like the avatar did nothing at all.
+ */
+function toggleUserMenu(e) {
+  if (e && e.stopPropagation) e.stopPropagation();
+  S.userMenu = !S.userMenu;
+  render();
+}
 
 addEventListener('click', function (e) {
   if (!S.userMenu) return;
