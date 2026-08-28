@@ -2037,8 +2037,18 @@ function signedIn() {
   const s = session();
   return !!(s && s.idToken && s.expiresAt > Date.now());
 }
+/**
+ * Signing out has to forget the person, not just the token.
+ *
+ * Clearing only the token left every field of theirs in memory — profile,
+ * connections, invitations, balance. The next person to sign in on the same
+ * tab then hit render()'s `!S.me` guard, which was already satisfied, so their
+ * own data was never fetched and they were shown the previous member's account
+ * under their own session. reset() rebuilds the whole state.
+ */
 function signOut() {
   try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+  reset();
   S.auth = { step: APP === 'portal' ? 'choose' : 'email', email: APP === 'bms' ? 'riyad@mobil80.com' : '', busy: false, error: null, session: null };
   render();
 }
@@ -2468,6 +2478,18 @@ function renderNotice() {
 
 function render() {
   renderNotice();
+  /**
+   * Second line of defence on identity. Whatever is in memory must belong to
+   * the account the current token is for; if it does not, it is someone else's
+   * and has to go before anything is painted. A stale-state bug should cost a
+   * reload, never show one member another member's account.
+   */
+  const sess = session();
+  if (sess && S.me && S.me.email && String(sess.email || '').toLowerCase() !== String(S.me.email).toLowerCase()) {
+    console.warn('signed-in identity does not match loaded profile — discarding');
+    reset();
+  }
+
   // Nothing truthful can be rendered until the first load returns.
   if (APP === 'portal' && signedIn() && !S.me && !S.dataError && !S.loading) loadPortal();
   // The badge needs the count before the page is opened.
