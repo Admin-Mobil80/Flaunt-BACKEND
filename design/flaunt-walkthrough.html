@@ -282,6 +282,51 @@ I am in Bengaluru, and happy to be useful to people building in this space, part
 var APP = 'both';   // build-time selector: 'portal' | 'bms' | 'both'
 var AUTH = { region: '__AWS_REGION__', clientId: '__CLIENT_ID__' };
 var API_URL = '__GRAPHQL_URL__';
+var PHOTO_BASE = '__PHOTO_BASE__';
+
+/**
+ * A person's avatar: their photo if they have one, their initials if not.
+ *
+ * Initials are the equal-footing fallback rather than a placeholder — nobody
+ * should look unfinished for declining to upload a face. photoAt is both the
+ * flag and the cache-buster, since the object key never changes.
+ */
+/** First line of a description, for lists. Enough to tell two similar roles apart. */
+function snippet(text, max) {
+  const t = String(text || '').replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  const n = max || 72;
+  return t.length <= n ? t : t.slice(0, t.lastIndexOf(' ', n) > 40 ? t.lastIndexOf(' ', n) : n).trim() + '\u2026';
+}
+
+/**
+ * How close someone is, as a mark rather than a word.
+ *
+ * "Connected" and "2nd degree" as plain grey text read as a data field; the
+ * distinction is the single most important thing about a row, because it
+ * decides whether you can write to them or have to ask someone.
+ */
+function degreeChip(degree) {
+  const first = degree === 1;
+  return `<span class="chip" style="border-color:${first ? 'var(--good-line)' : 'var(--rule-2)'};
+    background:${first ? 'var(--good-wash)' : 'var(--sunk)'};padding:2px 8px;white-space:nowrap;">
+    <span class="dot" style="background:${first ? 'var(--good)' : 'var(--ghost)'};"></span>
+    <span class="lbl" style="color:${first ? 'var(--good)' : 'var(--ink-soft)'};font-size:9.5px;">${first ? 'Connected' : '2nd degree'}</span></span>`;
+}
+
+function avatarHtml(p, px, extraStyle) {
+  const size = px || 30;
+  const style = `width:${size}px;height:${size}px;font-size:${Math.round(size * 0.38)}px;${extraStyle || ''}`;
+  if (PHOTO_BASE && p && p.photoAt) {
+    const file = size > 64 ? 'lg' : 'sm';
+    const v = encodeURIComponent(p.photoAt);
+    return `<img class="avatar" alt="" loading="lazy" decoding="async"
+      src="${PHOTO_BASE}/photos/${encodeURIComponent(p.userId)}/${file}.webp?v=${v}"
+      style="${style}object-fit:cover;"
+      onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'avatar',textContent:${JSON.stringify(initialsOf((p && p.name) || ''))},style:${JSON.stringify(style)}}))">`;
+  }
+  return `<span class="avatar" style="${style}">${initialsOf((p && p.name) || '')}</span>`;
+}
 var BUILD_ID = '__BUILD_ID__';
 var API_READY = API_URL.indexOf('__') !== 0;
 var AUTH_READY = AUTH.clientId.indexOf('__') !== 0;
@@ -356,7 +401,7 @@ function topbar(active) {
       </button>
       <div class="who" id="user-menu" data-open="${S.userMenu ? 'true' : 'false'}">
         <button class="who-btn" onclick="toggleUserMenu(event)" aria-haspopup="menu" aria-expanded="${S.userMenu ? 'true' : 'false'}"
-          title="${esc((S.me && S.me.name) || '')}">${S.me ? initialsOf(S.me.name) : '·'}</button>
+          title="${esc((S.me && S.me.name) || '')}">${S.me ? avatarHtml(S.me, 32, 'border:none;') : '·'}</button>
         ${!S.userMenu ? '' : `<div class="who-menu" role="menu">
           <div class="hd">
             <span class="trunc" style="font-family:var(--serif);font-size:15px;">${esc((S.me && S.me.name) || 'Signed in')}</span>
@@ -539,10 +584,11 @@ function vNetwork() {
     const role = [p.designation, p.organisation].filter(Boolean).join(' · ');
     return `<div class="lrow lrow-click" onclick="go('#/p/${p.userId}')" role="link" tabindex="0"
         onkeydown="if(event.key==='Enter')go('#/p/${p.userId}')"
-        style="grid-template-columns:26px minmax(110px,1.05fr) minmax(0,1.35fr) ${isSecond ? 'minmax(0,132px)' : '78px'} 22px;">
-      <span class="avatar" style="width:26px;height:26px;font-size:10.5px;${isSecond ? 'background:#F3EDE4;' : ''}">${initialsOf(p.name)}</span>
+        style="${NET_COLS(isSecond)}">
+      ${avatarHtml(p, 26, isSecond ? 'background:#F3EDE4;' : '')}
       <span class="trunc" style="font-family:var(--serif);font-size:15.5px;">${esc(p.name)}</span>
       <span class="trunc hide-sm" style="font-size:12.5px;color:var(--ink-soft);">${esc(role || '—')}</span>
+      <span class="trunc hide-sm" style="font-size:12px;color:var(--faint);">${esc(snippet(p.bio))}</span>
       ${isSecond
         ? `<span class="trunc hide-sm" style="font-size:12px;color:var(--faint);text-align:right;">${esc(p.viaName || '—')}</span>`
         : `<span class="hide-sm mono" style="font-size:12px;color:var(--ink-soft);text-align:right;">${p.connectionCount}</span>`}
@@ -550,8 +596,10 @@ function vNetwork() {
     </div>`;
   };
 
-  const header = (isSecond) => `<div class="lrow hide-sm" style="grid-template-columns:26px minmax(110px,1.05fr) minmax(0,1.35fr) ${isSecond ? 'minmax(0,132px)' : '78px'} 22px;border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
-      <span></span><span class="lbl">Name</span><span class="lbl">Role</span>
+  const NET_COLS = (isSecond) =>
+    `grid-template-columns:26px minmax(104px,.95fr) minmax(0,1.05fr) minmax(0,1.1fr) ${isSecond ? 'minmax(0,120px)' : '74px'} 22px;`;
+  const header = (isSecond) => `<div class="lrow hide-sm" style="${NET_COLS(isSecond)}border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
+      <span></span><span class="lbl">Name</span><span class="lbl">Role</span><span class="lbl">Description</span>
       <span class="lbl" style="text-align:right;">${isSecond ? 'Through' : 'Connections'}</span><span></span>
     </div>`;
 
@@ -622,7 +670,7 @@ async function loadTheirConnections(userId) {
   render();
   try {
     const d = await gql(`query C($id:ID!){ connectionsOf(userId:$id){
-      userId name designation organisation degree viaName viaUserId } }`, { id: userId });
+      userId name designation organisation degree viaName viaUserId photoAt bio } }`, { id: userId });
     S.viewing = { ...S.viewing, theirs: d.connectionsOf || [], theirsLoading: false, theirsError: null };
   } catch (e) {
     S.viewing = { ...S.viewing, theirs: [], theirsLoading: false, theirsError: e.message };
@@ -636,8 +684,8 @@ async function openProfile(userId) {
   try {
     const d = await gql(`query P($id:ID!){ profile(userId:$id){
       userId name designation organisation location bio country
-      primaryEmail secondaryEmail secondaryEmailUnverified connectedAt degree viaName viaUserId
-      viaOptions { userId name designation } } }`, { id: userId });
+      primaryEmail secondaryEmail secondaryEmailUnverified connectedAt degree viaName viaUserId photoAt
+      viaOptions { userId name designation photoAt } } }`, { id: userId });
     S.viewing = { loading: false, userId, profile: d.profile, error: null, theirs: null, theirsLoading: false, tab: 'details' };
   } catch (e) {
     S.viewing = { loading: false, userId, profile: null, error: e.message };
@@ -744,7 +792,7 @@ function vGatekeeperInbox() {
       return `<div style="border:1px solid var(--rule-2);background:var(--raised);display:flex;flex-direction:column;">
       <button onclick="toggleGk('${r.inviteId}', ${rs.length === 1})" aria-expanded="${open}"
         style="background:none;border:none;text-align:left;padding:16px 22px;display:flex;align-items:center;gap:14px;width:100%;">
-        <span class="avatar" style="width:30px;height:30px;font-size:11.5px;flex:none;">${initialsOf(r.requesterName)}</span>
+        ${avatarHtml({ userId: r.requesterUserId, name: r.requesterName, photoAt: r.requesterPhotoAt }, 30, 'flex:none;')}
         <span style="display:flex;flex-direction:column;gap:2px;min-width:0;flex:1;">
           <span class="serif trunc" style="font-size:16px;">${esc(r.requesterName)} &rarr; ${esc(r.targetName)}</span>
           <span class="trunc" style="font-size:12px;color:var(--ink-soft);">${esc(r.requesterDesignation || 'Wants an introduction')}</span>
@@ -770,7 +818,9 @@ function vGatekeeperInbox() {
       </div>
       <p style="margin:0;font-size:12.5px;color:var(--ink-soft);line-height:1.6;">${esc(r.targetName)} hears nothing unless you approve. If you decline, ${esc(r.requesterName)} is told you passed &mdash; not why &mdash; and their token is returned.${r.daysLeft !== null ? ` ${r.daysLeft} day${r.daysLeft === 1 ? '' : 's'} left.` : ''}</p>
       <div style="display:flex;flex-direction:column;gap:7px;">
-        <label class="lbl" for="gk-note-${r.inviteId}">Add a note <span style="text-transform:none;letter-spacing:0;color:var(--faint);">&mdash; optional, and the reason this reads as an introduction rather than a forwarded form</span></label>
+        <label class="lbl" for="gk-note-${r.inviteId}">Add a note
+          <span style="color:var(--warn);">Required</span>
+          <span style="text-transform:none;letter-spacing:0;color:var(--faint);">&mdash; it is what makes this an introduction rather than a forwarded form</span></label>
         <textarea id="gk-note-${r.inviteId}" maxlength="600"
           placeholder="Why you think they should meet. ${esc(r.targetName.split(' ')[0])} sees this alongside ${esc(r.requesterName.split(' ')[0])}&rsquo;s profile."
           style="border:1px solid var(--rule-2);background:var(--raised);padding:11px 13px;font-size:13.5px;
@@ -837,7 +887,7 @@ function vProfile(id) {
   return topbar('network') + `<div class="wrap" style="padding-top:clamp(24px,3vw,40px);"><div class="col" style="max-width:700px;gap:32px;">
     <button onclick="S.viewing=null;go('#/network');" style="display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink-soft);background:none;border:none;padding:0;align-self:flex-start;">${BACK_ARROW}Network</button>
     <div style="display:flex;align-items:flex-start;gap:22px;flex-wrap:wrap;">
-      <span class="avatar" style="width:84px;height:84px;font-size:29px;">${initialsOf(p.name)}</span>
+      ${avatarHtml(p, 84)}
       <div style="display:flex;flex-direction:column;gap:5px;padding-top:6px;">
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
           <h1 class="serif" style="margin:0;font-size:clamp(27px,5vw,34px);font-weight:400;letter-spacing:-.015em;">${esc(p.name)}</h1>
@@ -879,7 +929,7 @@ function vProfile(id) {
 
       <div style="display:flex;flex-direction:column;">
         ${p.viaOptions.map((o) => `<div class="lrow" style="grid-template-columns:26px minmax(110px,1fr) auto;">
-          <span class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initialsOf(o.name)}</span>
+          ${avatarHtml(o, 26)}
           <span style="display:flex;flex-direction:column;gap:1px;min-width:0;">
             <span class="trunc" style="font-family:var(--serif);font-size:15px;">${esc(o.name)}</span>
             ${o.designation ? `<span class="trunc" style="font-size:12px;color:var(--ink-soft);">${esc(o.designation)}</span>` : ''}
@@ -896,7 +946,7 @@ function vProfile(id) {
 
     ${p.degree === 1 && (v.tab || 'details') === 'connections' ? `<div style="display:flex;flex-direction:column;gap:0;">
       <div class="lrow hide-sm" style="grid-template-columns:26px minmax(110px,1fr) minmax(0,1.3fr) 110px 22px;border-bottom:1px solid var(--rule-2);padding-bottom:8px;">
-        <span></span><span class="lbl">Name</span><span class="lbl">Role</span><span class="lbl" style="text-align:right;">Relationship</span><span></span>
+        <span></span><span class="lbl">Name</span><span class="lbl">Role</span><span class="lbl">Description</span><span class="lbl" style="text-align:right;">Relationship</span><span></span>
       </div>
       ${v.theirsLoading ? `<p style="margin:14px 0;font-size:13px;color:var(--ink-soft);">Loading…</p>` : ''}
       ${v.theirs && v.theirs.length ? v.theirs.map((c) => {
@@ -905,13 +955,12 @@ function vProfile(id) {
         // token, so it belongs on the page that shows who the person is.
         return `<div class="lrow lrow-click" onclick="S.viewing=null;go('#/p/${c.userId}')" role="link" tabindex="0"
             onkeydown="if(event.key==='Enter'){S.viewing=null;go('#/p/${c.userId}')}"
-            style="grid-template-columns:26px minmax(110px,1fr) minmax(0,1.3fr) 110px 22px;">
-          <span class="avatar" style="width:26px;height:26px;font-size:10.5px;background:#F3EDE4;">${initialsOf(c.name)}</span>
+            style="grid-template-columns:26px minmax(104px,.95fr) minmax(0,1.05fr) minmax(0,1.2fr) 104px 22px;">
+          ${avatarHtml(c, 26, 'background:#F3EDE4;')}
           <span class="trunc" style="font-family:var(--serif);font-size:15px;">${esc(c.name)}</span>
           <span class="trunc hide-sm" style="font-size:12.5px;color:var(--ink-soft);">${esc(crole || '—')}</span>
-          <span style="text-align:right;">${c.degree === 1
-            ? `<span class="lbl" style="color:var(--good);">Connected</span>`
-            : `<span class="lbl" style="color:var(--warn);">2nd degree</span>`}</span>
+          <span class="trunc hide-sm" style="font-size:12px;color:var(--faint);">${esc(snippet(c.bio))}</span>
+          <span style="display:flex;justify-content:flex-end;">${degreeChip(c.degree)}</span>
           <span style="color:var(--ghost);display:flex;justify-content:flex-end;">${CHEV}</span>
         </div>`;
       }).join('') : (v.theirs && v.theirs.length === 0
@@ -985,7 +1034,7 @@ function vInvitations() {
     ${invTab !== 'inbox' ? '' : (waitingOnYou.length ? `<div style="display:flex;flex-direction:column;gap:10px;">
       <div style="display:flex;flex-direction:column;border:1px solid var(--rule-2);background:var(--raised);">
         ${waitingOnYou.map((r) => `<div class="lrow" style="grid-template-columns:26px minmax(0,1fr) auto;padding-left:14px;padding-right:14px;">
-          <span class="avatar" style="width:26px;height:26px;font-size:10.5px;">${initialsOf(r.senderName || '?')}</span>
+          ${avatarHtml({ userId: r.senderUserId, name: r.senderName || '?', photoAt: r.senderPhotoAt }, 26)}
           <span style="display:flex;flex-direction:column;gap:1px;min-width:0;">
             <span class="trunc" style="font-family:var(--serif);font-size:15px;">${esc(r.senderName || 'Someone')} invited you to connect</span>
             ${r.senderDesignation ? `<span class="trunc" style="font-size:12px;color:var(--ink-soft);">${esc(r.senderDesignation)}</span>` : ''}</span>
@@ -1070,7 +1119,7 @@ function vTokens() {
     ${backlink('Network','#/network')}
     <div style="display:flex;flex-direction:column;gap:9px;">
       <h1 class="big">Buy tokens</h1>
-      <p style="margin:0;font-size:14px;color:var(--ink-soft);max-width:52ch;text-wrap:pretty;">Priced for your country, ${esc(country)}. Set once at sign-up — contact support to change it.</p>
+      <p style="margin:0;font-size:12px;color:var(--faint);max-width:52ch;">Priced for ${esc(country)}.</p>
     </div>
     <div style="border:1.5px solid var(--accent);background:var(--raised);display:flex;flex-direction:column;">
       <div style="display:flex;align-items:center;justify-content:space-between;padding:15px 24px;border-bottom:1px solid var(--rule);background:var(--accent-wash);">
@@ -1702,10 +1751,10 @@ async function gql(query, variables) {
 }
 
 const Q_PORTAL = `query Portal {
-  me { userId name email designation organisation location bio country tokenBalance createdAt connectionCount secondaryEmail }
-  myConnections { userId name designation organisation location connectedAt connectionCount }
+  me { userId name email designation organisation location bio country tokenBalance createdAt connectionCount secondaryEmail photoAt }
+  myConnections { userId name designation organisation location connectedAt connectionCount photoAt bio }
   myInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome targetName gatekeeperName direction }
-  incomingInvitations { inviteId recipientEmail senderName senderDesignation status type createdAt daysLeft tokenOutcome direction }
+  incomingInvitations { inviteId recipientEmail senderName senderDesignation status type createdAt daysLeft tokenOutcome direction senderUserId senderPhotoAt }
   tokenPrice { currency symbol tokens baseMinor taxMinor totalMinor taxLabel baseDisplay taxDisplay totalDisplay }
   paymentMode
 }`;
@@ -1778,6 +1827,65 @@ async function saveProfile() {
   }
 }
 
+/**
+ * Resizes in the browser before anything is uploaded.
+ *
+ * The alternative is accepting whatever the phone produced — a twelve megabyte
+ * photograph — and shrinking it server-side, which means paying to receive it,
+ * paying to store it, and running an image pipeline. A canvas does the same job
+ * on the device for free, and the bucket only ever holds files this size.
+ */
+function resizeToWebp(file, px) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      // Square, centre-cropped: every avatar is a circle, so anything outside
+      // the shortest side was never going to be seen.
+      const side = Math.min(img.width, img.height);
+      const c = document.createElement('canvas');
+      c.width = px; c.height = px;
+      const ctx = c.getContext('2d');
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(img, (img.width - side) / 2, (img.height - side) / 2, side, side, 0, 0, px, px);
+      c.toBlob((b) => b ? resolve(b) : reject(new Error('Could not read that image')), 'image/webp', 0.86);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not an image we can read')); };
+    img.src = url;
+  });
+}
+
+async function uploadPhoto(input) {
+  const file = input && input.files && input.files[0];
+  if (!file) return;
+  if (!/^image\//.test(file.type)) { toast('Choose an image file.'); return; }
+  S.photoBusy = true; S.profileError = null; render();
+  try {
+    const d = await gql(`mutation { createPhotoUpload { uploads { size pixels url } } }`);
+    await Promise.all(d.createPhotoUpload.uploads.map(async (u) => {
+      const blob = await resizeToWebp(file, u.pixels);
+      const r = await fetch(u.url, { method: 'PUT', body: blob, headers: { 'content-type': 'image/webp' } });
+      if (!r.ok) throw new Error('The upload was refused. Try again.');
+    }));
+    const c = await gql(`mutation { confirmPhotoUpload { userId name email designation organisation location bio country tokenBalance createdAt connectionCount secondaryEmail photoAt } }`);
+    S.me = c.confirmPhotoUpload;
+    toast('Photo updated.');
+  } catch (e) { toast(e.message || 'Could not upload that photo.'); }
+  finally { S.photoBusy = false; render(); }
+}
+
+async function removePhoto() {
+  if (!confirm('Remove your photo?\n\nYour initials are shown instead.')) return;
+  S.photoBusy = true; render();
+  try {
+    const d = await gql(`mutation { removeProfilePhoto { userId name email designation organisation location bio country tokenBalance createdAt connectionCount secondaryEmail photoAt } }`);
+    S.me = d.removeProfilePhoto;
+    toast('Photo removed.');
+  } catch (e) { toast(e.message); }
+  finally { S.photoBusy = false; render(); }
+}
+
 function vProfileEdit() {
   const base = S.me || {};
   const dr = S.profileDraft;
@@ -1798,6 +1906,21 @@ function vProfileEdit() {
       <span style="font-size:13px;color:var(--bad);">${esc(S.profileError)}</span>
       <span style="font-size:12.5px;color:var(--ink-soft);">Your other changes are still in the form &mdash; fix this and save again.</span>
     </div>` : ''}
+
+    <div style="display:flex;align-items:center;gap:18px;">
+      ${avatarHtml(m, 72)}
+      <div style="display:flex;flex-direction:column;gap:7px;min-width:0;">
+        <span class="lbl">Photo</span>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+          <label class="btn ghost" style="cursor:pointer;padding:7px 14px;font-size:12.5px;">
+            ${S.photoBusy ? 'Uploading…' : (m.photoAt ? 'Replace' : 'Upload a photo')}
+            <input type="file" accept="image/*" ${S.photoBusy ? 'disabled' : ''} onchange="uploadPhoto(this)" style="display:none;">
+          </label>
+          ${m.photoAt ? `<button type="button" class="rowbtn" style="opacity:1;" ${S.photoBusy ? 'disabled' : ''} onclick="removePhoto()">Remove</button>` : ''}
+        </div>
+        <span style="font-size:11.5px;color:var(--faint);">Optional. Squared and resized on your device before it is sent.</span>
+      </div>
+    </div>
 
     <div style="display:flex;flex-direction:column;gap:7px;">
       <span class="lbl">Email</span>
@@ -1958,7 +2081,7 @@ async function loadSecond(offset = 0) {
   const forQuery = (S.netFilter || '').trim();
   try {
     const d = await gql(`query S($l:Int!,$o:Int!,$q:String){ secondDegree(limit:$l, offset:$o, q:$q){
-      items { userId name designation organisation viaName viaUserId } total hasMore } }`,
+      items { userId name designation organisation viaName viaUserId photoAt bio } total hasMore } }`,
       { l: SECOND_PAGE, o: offset, q: forQuery || null });
     if ((S.netFilter || '').trim() !== forQuery) return;
     const page = d.secondDegree;
@@ -2002,7 +2125,7 @@ async function loadGatekeeper() {
   S.gkLoading = true; render();
   try {
     const d = await gql(`query { gatekeeperRequests {
-      inviteId createdAt daysLeft requesterName requesterDesignation requesterUserId
+      inviteId createdAt daysLeft requesterName requesterDesignation requesterUserId requesterPhotoAt
       targetName targetDesignation targetUserId } }`);
     S.gatekeeper = d.gatekeeperRequests || [];
   } catch (e) { S.gkError = e.message; }
@@ -2015,15 +2138,22 @@ async function decideIntroduction(inviteId, approve, requesterName, targetName) 
   // Read the note before anything re-renders and destroys the textarea.
   const el = document.getElementById('gk-note-' + inviteId);
   const note = el ? el.value.trim() : '';
+  // Required on approval only. Declining says nothing to anyone, so there is
+  // nothing to write; vouching is the act that needs words behind it.
+  if (approve && !note) {
+    toast('Add a note before approving — it is what the introduction is worth.');
+    if (el) { el.focus(); el.style.borderColor = 'var(--bad)'; }
+    return;
+  }
   try {
     if (approve) {
       await gql(`mutation A($i:ID!,$n:String){ approveIntroduction(inviteId:$i, note:$n){ inviteId status } }`,
-        { i: inviteId, n: note || null });
+        { i: inviteId, n: note });
     } else {
       await gql(`mutation D($i:ID!){ declineIntroduction(inviteId:$i){ inviteId status } }`, { i: inviteId });
     }
     await loadGatekeeper();
-    toast(approve ? `Introduced. ${targetName} has been emailed${note ? ' with your note' : ''}.` : 'Declined. Their token has been returned.');
+    toast(approve ? `Introduced. ${targetName} has been emailed with your note.` : 'Declined. Their token has been returned.');
   } catch (e) { toast(e.message); }
 }
 

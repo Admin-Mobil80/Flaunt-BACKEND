@@ -9,6 +9,8 @@
     "cdk": "cdk"
   },
   "devDependencies": {
+    "@aws-sdk/client-s3": "^3.1120.0",
+    "@aws-sdk/s3-request-presigner": "^3.1120.0",
     "@swc/core": "^1.15.0",
     "@swc/jest": "^0.2.39",
     "@types/aws-lambda": "^8.10.162",

@@ -64,6 +64,21 @@ function graphqlUrl() {
 }
 const GRAPHQL_URL = graphqlUrl();
 
+/** Where profile photos are read from — its own distribution, beside the bucket. */
+function photoBase() {
+  try {
+    const out = execFileSync('aws', [
+      'cloudformation', 'describe-stacks', '--stack-name', 'FlauntDataStackProd',
+      '--region', REGION, '--profile', PROFILE,
+      '--query', "Stacks[0].Outputs[?OutputKey=='PhotoBaseUrl'].OutputValue", '--output', 'text',
+    ], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    if (out && out !== 'None') return out;
+  } catch { /* not deployed yet */ }
+  console.warn('  ! PhotoBaseUrl not readable — building without profile photos.');
+  return '';
+}
+const PHOTO_BASE = photoBase();
+
 /**
  * Identifies this build. The page polls version.json and, when the id differs
  * from its own, offers a refresh — a long-open tab otherwise keeps running the
@@ -125,6 +140,7 @@ for (const app of ['portal', 'bms']) {
     .replace('__AWS_REGION__', REGION)
     .replace('__CLIENT_ID__', CLIENT_IDS[app])
     .replace('__GRAPHQL_URL__', GRAPHQL_URL)
+    .replace('__PHOTO_BASE__', PHOTO_BASE)
     .replace('__BUILD_ID__', BUILD_ID)
     .replace('__TITLE__', TAB[app].title)
     .replace('__FAVICON__', TAB[app].icon);

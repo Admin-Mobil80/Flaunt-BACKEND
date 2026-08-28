@@ -3,6 +3,9 @@ import { Construct } from 'constructs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as kms from 'aws-cdk-lib/aws-kms';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
+import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import { EnvProps, suffix, s3Suffix, subdomainPrefix } from './env-config';
 
 export interface DataStackProps extends StackProps, EnvProps {}
@@ -28,6 +31,7 @@ function uploadOrigins(envName: EnvProps['envName']): string[] {
 export class DataStack extends Stack {
   public readonly table: dynamodb.Table;
   public readonly profilePhotoBucket: s3.Bucket;
+  public readonly photoDistribution: cloudfront.Distribution;
   public readonly encryptionKey: kms.Key;
 
   constructor(scope: Construct, id: string, props: DataStackProps) {
@@ -155,6 +159,33 @@ export class DataStack extends Stack {
       removalPolicy: RemovalPolicy.RETAIN,
     });
 
+    /**
+     * Photos get their own distribution, in this stack, on purpose.
+     *
+     * Hanging a /photos/* behaviour off the portal's distribution is the
+     * tidier URL, but the origin access control writes a bucket policy that
+     * names the distribution while the distribution needs the bucket's domain
+     * — a dependency cycle between the two stacks that CDK refuses outright.
+     * Owning both ends here removes the cycle rather than working around it.
+     * No custom domain: an <img> does not care what host it came from, and a
+     * certificate here would buy nothing.
+     */
+    this.photoDistribution = new cloudfront.Distribution(this, 'PhotoDistribution', {
+      comment: `Flaunt profile photos (${envName})`,
+      defaultBehavior: {
+        origin: origins.S3BucketOrigin.withOriginAccessControl(this.profilePhotoBucket),
+        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        // Every photo URL carries the version it was written at, so a replaced
+        // face is a different URL and this can cache hard without going stale.
+        cachePolicy: cloudfront.CachePolicy.CACHING_OPTIMIZED,
+      },
+      priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
+    });
+    // The bucket is KMS-encrypted, so read access alone is not enough: without
+    // this the distribution fetches the object and cannot decrypt it.
+    this.encryptionKey.grantDecrypt(new iam.ServicePrincipal('cloudfront.amazonaws.com'));
+
+    new CfnOutput(this, 'PhotoBaseUrl', { value: `https://${this.photoDistribution.distributionDomainName}` });
     new CfnOutput(this, 'TableName', { value: this.table.tableName });
     new CfnOutput(this, 'TableStreamArn', { value: this.table.tableStreamArn! });
     new CfnOutput(this, 'ProfilePhotoBucketName', { value: this.profilePhotoBucket.bucketName });

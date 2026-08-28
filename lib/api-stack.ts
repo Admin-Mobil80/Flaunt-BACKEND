@@ -7,6 +7,7 @@ import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as lambdaNode from 'aws-cdk-lib/aws-lambda-nodejs';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as path from 'path';
 import { EnvProps, suffix } from './env-config';
 
@@ -17,6 +18,8 @@ export interface ApiStackProps extends StackProps, EnvProps {
   userPool: cognito.UserPool;
   bmsUserPool: cognito.UserPool;
   rootAdminEmail: string;
+  /** Where profile photos are written. Read access is CloudFront's, not ours. */
+  photoBucket: s3.IBucket;
 }
 
 /**
@@ -36,7 +39,7 @@ export class ApiStack extends Stack {
   constructor(scope: Construct, id: string, props: ApiStackProps) {
     super(scope, id, props);
 
-    const { table, userPool, bmsUserPool, rootAdminEmail, otpFromEmail, portalUrl, envName } = props;
+    const { table, userPool, bmsUserPool, rootAdminEmail, otpFromEmail, portalUrl, envName, photoBucket } = props;
     const sfx = suffix(envName);
 
     this.api = new appsync.GraphqlApi(this, 'FlauntGraphqlApi', {
@@ -90,6 +93,7 @@ export class ApiStack extends Stack {
         TABLE_NAME: table.tableName,
         OTP_FROM_EMAIL: otpFromEmail,
         PORTAL_URL: portalUrl,
+        PHOTO_BUCKET: photoBucket.bucketName,
       },
     });
     table.grantReadWriteData(portalFn);
@@ -135,6 +139,18 @@ export class ApiStack extends Stack {
       resources: [bmsUserPool.userPoolArn],
     }));
 
+    /**
+     * Write-only on the photo bucket. Reads happen through CloudFront, so the
+     * resolver never needs GetObject — HeadObject is how it checks an upload
+     * landed, which is a read of metadata rather than of anyone's face.
+     */
+    photoBucket.grantPut(portalFn);
+    photoBucket.grantDelete(portalFn);
+    portalFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['s3:GetObject'],
+      resources: [photoBucket.arnForObjects('photos/*')],
+    }));
+
     const portalDs = this.api.addLambdaDataSource('PortalDataSource', portalFn);
     const adminDs = this.api.addLambdaDataSource('AdminDataSource', adminFn);
 
@@ -144,6 +160,9 @@ export class ApiStack extends Stack {
     portalDs.createResolver('MutationsendInvitation', { typeName: 'Mutation', fieldName: 'sendInvitation' });
     portalDs.createResolver('MutationupdateProfile', { typeName: 'Mutation', fieldName: 'updateProfile' });
     portalDs.createResolver('MutationcreatePaymentOrder', { typeName: 'Mutation', fieldName: 'createPaymentOrder' });
+    for (const f of ['createPhotoUpload', 'confirmPhotoUpload', 'removeProfilePhoto']) {
+      portalDs.createResolver(`Mutation${f}`, { typeName: 'Mutation', fieldName: f });
+    }
     portalDs.createResolver('MutationacceptInvitation', { typeName: 'Mutation', fieldName: 'acceptInvitation' });
     portalDs.createResolver('MutationdeclineInvitation', { typeName: 'Mutation', fieldName: 'declineInvitation' });
     portalDs.createResolver('MutationcancelInvitation', { typeName: 'Mutation', fieldName: 'cancelInvitation' });

@@ -1,6 +1,8 @@
 import type { AppSyncResolverEvent } from 'aws-lambda';
 import { QueryCommand, GetCommand, TransactWriteCommand, UpdateCommand, PutCommand, BatchGetCommand } from '@aws-sdk/lib-dynamodb';
 import { randomUUID } from 'node:crypto';
+import { S3Client, PutObjectCommand, HeadObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import { priceForCountry, formatMinor, coerceBundleSize, coercePaymentMode } from '../../shared/pricing';
 import { credentials, createOrder } from '../../shared/razorpay';
@@ -75,6 +77,7 @@ async function me(userId: string) {
     tokenBalance: p.tokenBalance ?? 0,
     createdAt: p.createdAt,
     connectionCount: conns.length,
+    photoAt: p.photoAt ?? null,
   };
 }
 
@@ -103,6 +106,8 @@ async function myConnections(userId: string) {
     return {
       userId: r.otherUserId,
       name: p.name ?? 'Unknown',
+      photoAt: p.photoAt ?? null,
+      bio: p.bio ?? null,
       designation: p.designation ?? null,
       organisation: p.organisation ?? null,
       location: p.location ?? null,
@@ -187,6 +192,8 @@ async function incomingInvitations(userId: string) {
     targetName: null,
     gatekeeperName: null,
     direction: 'RECEIVED',
+    senderUserId: it.senderId ?? null,
+    senderPhotoAt: senders.get(it.senderId)?.photoAt ?? null,
   }));
 }
 
@@ -677,7 +684,7 @@ async function profile(callerId: string, targetId: string) {
   if (callerId === targetId) {
     return { ...base, location: target.location ?? null, primaryEmail: target.primaryEmail,
       secondaryEmail: target.secondaryEmail ?? null, degree: 0, viaName: null, viaUserId: null,
-      viaOptions: [], connectedAt: null };
+      viaOptions: [], connectedAt: null, photoAt: target.photoAt ?? null };
   }
 
   const { Item: direct } = await ddb.send(new GetCommand({
@@ -687,7 +694,7 @@ async function profile(callerId: string, targetId: string) {
     return { ...base, location: target.location ?? null, primaryEmail: target.primaryEmail,
       secondaryEmail: target.secondaryEmail ?? null,
       secondaryEmailUnverified: Boolean(target.secondaryEmail),
-      degree: 1, viaName: null, viaUserId: null, viaOptions: [],
+      degree: 1, viaName: null, viaUserId: null, viaOptions: [], photoAt: target.photoAt ?? null,
       connectedAt: direct.connectedAt ?? null };
   }
 
@@ -711,6 +718,7 @@ async function profile(callerId: string, targetId: string) {
         userId: id,
         name: v.name ?? 'Unknown',
         designation: [v.designation, v.organisation].filter(Boolean).join(' · ') || null,
+        photoAt: v.photoAt ?? null,
       };
     }).sort((a, b) => a.name.localeCompare(b.name));
 
@@ -724,7 +732,7 @@ async function profile(callerId: string, targetId: string) {
       degree: 2,
       viaName: viaOptions[0]?.name ?? null,
       viaUserId: viaOptions[0]?.userId ?? null,
-      viaOptions,
+      viaOptions, photoAt: target.photoAt ?? null,
       connectedAt: null,
     };
   }
@@ -808,12 +816,79 @@ async function connectionsOf(callerId: string, contactId: string) {
       degree: isDirect ? 1 : 2,
       viaName: isDirect ? null : contact.name,
       viaUserId: isDirect ? null : contactId,
-      viaOptions: [],
+      viaOptions: [], photoAt: p.photoAt ?? null,
     };
   }).sort((x: any, y: any) => String(x.name).localeCompare(String(y.name)));
 }
 
 const SECOND_DEGREE_FAN_OUT = 60;
+
+const s3 = new S3Client({});
+const PHOTO_BUCKET = process.env.PHOTO_BUCKET ?? '';
+
+/**
+ * Two sizes, because one cannot serve both jobs.
+ *
+ * A list shows fifty faces at 30px; a profile shows one at 96. Sending the
+ * profile-sized file to a list would be about a megabyte of photographs to
+ * render thumbnails, so the client uploads both and each surface asks for the
+ * one it needs.
+ */
+const PHOTO_SIZES = { sm: 128, lg: 512 } as const;
+const photoKey = (userId: string, size: 'sm' | 'lg') => `photos/${userId}/${size}.webp`;
+
+/** Presigned PUTs for a member's own keys. Never for anyone else's. */
+async function createPhotoUpload(userId: string) {
+  if (!PHOTO_BUCKET) throw new Error('Photo uploads are not configured');
+  const urls = await Promise.all((['sm', 'lg'] as const).map(async (size) => ({
+    size,
+    pixels: PHOTO_SIZES[size],
+    url: await getSignedUrl(s3, new PutObjectCommand({
+      Bucket: PHOTO_BUCKET,
+      Key: photoKey(userId, size),
+      ContentType: 'image/webp',
+    }), { expiresIn: 300 }),
+  })));
+  return { uploads: urls };
+}
+
+/**
+ * Records that a photo exists, after checking that it actually does.
+ *
+ * The browser could report success on an upload that never landed, and a
+ * profile claiming a photo it does not have renders a broken image to everyone
+ * who sees it. HeadObject is one call and removes the whole class of problem.
+ */
+async function confirmPhotoUpload(userId: string) {
+  if (!PHOTO_BUCKET) throw new Error('Photo uploads are not configured');
+  await Promise.all((['sm', 'lg'] as const).map((size) =>
+    s3.send(new HeadObjectCommand({ Bucket: PHOTO_BUCKET, Key: photoKey(userId, size) }))));
+  const photoAt = new Date().toISOString();
+  await ddb.send(new UpdateCommand({
+    TableName: TABLE_NAME,
+    Key: k.user(userId),
+    UpdateExpression: 'SET photoAt = :p',
+    ConditionExpression: 'attribute_exists(PK)',
+    ExpressionAttributeValues: { ':p': photoAt },
+  }));
+  return me(userId);
+}
+
+async function removeProfilePhoto(userId: string) {
+  if (PHOTO_BUCKET) {
+    await s3.send(new DeleteObjectsCommand({
+      Bucket: PHOTO_BUCKET,
+      Delete: { Objects: (['sm', 'lg'] as const).map((size) => ({ Key: photoKey(userId, size) })) },
+    })).catch(() => { /* the record is what matters; a stray object costs cents */ });
+  }
+  await ddb.send(new UpdateCommand({
+    TableName: TABLE_NAME,
+    Key: k.user(userId),
+    UpdateExpression: 'REMOVE photoAt',
+    ConditionExpression: 'attribute_exists(PK)',
+  }));
+  return me(userId);
+}
 
 /**
  * Profiles for many ids at once. BatchGet caps at 100 keys per call, so this
@@ -935,7 +1010,7 @@ async function secondDegree(userId: string, limit = 50, offset = 0, q?: string) 
       degree: 2,
       viaName: viaName.get(found.get(id)!) ?? null,
       viaUserId: found.get(id) ?? null,
-      viaOptions: [],
+      viaOptions: [], photoAt: p.photoAt ?? null,
     };
   }).sort((x, y) => String(x.name).localeCompare(String(y.name)));
 
@@ -1068,6 +1143,7 @@ async function gatekeeperRequests(userId: string) {
       requesterName: req.name ?? 'Unknown',
       requesterDesignation: [req.designation, req.organisation].filter(Boolean).join(' · ') || null,
       requesterUserId: i.senderId,
+      requesterPhotoAt: req.photoAt ?? null,
       targetName: tgt.name ?? 'Unknown',
       targetDesignation: [tgt.designation, tgt.organisation].filter(Boolean).join(' · ') || null,
       targetUserId: i.targetUserId,
@@ -1295,6 +1371,9 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'removeConnection': return removeConnection(userId, args.userId);
     case 'sendInvitation': return sendInvitation(userId, args.email);
     case 'updateProfile': return updateProfile(userId, args);
+    case 'createPhotoUpload': return createPhotoUpload(userId);
+    case 'confirmPhotoUpload': return confirmPhotoUpload(userId);
+    case 'removeProfilePhoto': return removeProfilePhoto(userId);
     case 'createPaymentOrder': return createPaymentOrder(userId);
     // Name search needs the GSI3 NAME# namespace and the degree walk; until
     // that lands it returns nothing rather than something invented.

@@ -111,6 +111,7 @@ stacks.push(new ApiStack(app, 'FlauntApiStackProd', {
   table: dataStack.table,
   userPool: authStack.userPool,
   bmsUserPool: bmsAuthStack.userPool,
+  photoBucket: dataStack.profilePhotoBucket,
   rootAdminEmail: ROOT_ADMIN_EMAIL,
   otpFromEmail: OTP_FROM_EMAIL,
   portalUrl: `https://${PORTAL_DOMAIN}`,

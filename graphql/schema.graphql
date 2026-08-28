@@ -18,6 +18,7 @@ type IntroPath {
   userId: ID!
   name: String!
   designation: String
+  photoAt: String
 }
 
 type Profile {
@@ -42,6 +43,9 @@ type Profile {
   viaOptions: [IntroPath!]!
   # True when a second address is on file but not yet proved.
   secondaryEmailUnverified: Boolean
+  # When the photo was last replaced. Absent means no photo; the value doubles
+  # as the cache-busting version, since the object key itself never changes.
+  photoAt: String
 }
 
 type Me {
@@ -59,6 +63,7 @@ type Me {
   # Optional second address. Stored as an unverified claim until a
   # verification round-trip exists.
   secondaryEmail: String
+  photoAt: String
 }
 
 type Connection {
@@ -70,6 +75,9 @@ type Connection {
   connectedAt: String!
   # How many direct connections they have. Their reach, not yours.
   connectionCount: Int!
+  photoAt: String
+  # Shown truncated in lists — enough to tell two people with the same job apart.
+  bio: String
 }
 
 type Invitation @aws_cognito_user_pools {
@@ -88,6 +96,8 @@ type Invitation @aws_cognito_user_pools {
   gatekeeperName: String
   # SENT by the caller, or RECEIVED by them.
   direction: String
+  senderUserId: ID
+  senderPhotoAt: String
 }
 
 # Amounts are minor units — paise or cents — because that is what Razorpay
@@ -120,10 +130,21 @@ type IntroductionRequest {
   requesterName: String!
   requesterDesignation: String
   requesterUserId: ID!
+  requesterPhotoAt: String
   # Who they want to meet.
   targetName: String!
   targetDesignation: String
   targetUserId: ID!
+}
+
+type PhotoUpload {
+  size: String!
+  pixels: Int!
+  url: String!
+}
+
+type PhotoUploadTicket {
+  uploads: [PhotoUpload!]!
 }
 
 type PaymentOrder {
@@ -288,6 +309,11 @@ type Mutation {
   # Creates a Razorpay order for one token bundle, priced from the caller's own
   # country. Tokens are credited by the webhook, never by the browser.
   createPaymentOrder: PaymentOrder!
+  # Presigned PUTs for the caller's own photo keys, one per stored size.
+  createPhotoUpload: PhotoUploadTicket!
+  # Records the photo after checking both objects actually landed.
+  confirmPhotoUpload: Me!
+  removeProfilePhoto: Me!
   updateProfile(
     name: String
     designation: String
