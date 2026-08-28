@@ -163,7 +163,12 @@ type AdminStats @aws_cognito_user_pools {
   totalUsers: Int!
   usersIndia: Int!
   usersInternational: Int!
+  # Sitting in members' balances, unspent.
   tokensOutstanding: Int!
+  # Spent on an invitation or introduction and never returned.
+  tokensConsumed: Int!
+  # Spent, then handed back because the invitation died without connecting anyone.
+  tokensRefunded: Int!
 }
 
 type Query {

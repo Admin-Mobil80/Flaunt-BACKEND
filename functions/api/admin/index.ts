@@ -86,23 +86,68 @@ async function adminUsers(limit = 50, offset = 0) {
   }));
 }
 
+/** Debits. Every one of these moves a token out of a member's balance. */
+const SPEND_REASONS = new Set<string>([k.TXN_REASON.INVITE_SENT, k.TXN_REASON.INTRO_REQUESTED]);
+
+/** Credits that hand a spent token back — the invite died without connecting anyone. */
+const REFUND_REASONS = new Set<string>([
+  k.TXN_REASON.REFUND_REJECTED,
+  k.TXN_REASON.REFUND_EXPIRED,
+  k.TXN_REASON.REFUND_CANCELLED,
+  k.TXN_REASON.REFUND_GATEKEEPER_DENIED,
+]);
+
 /**
- * Totals from the same single scan — no per-user reads at all. Counting
- * accounts must not get slower as accounts are added, which is precisely what
- * enumerating them did.
+ * Every figure on the ledger screen, from one pass over the table.
+ *
+ * Consumed tokens are counted from the transaction ledger rather than the
+ * STATS# counters, which are the cheaper source but not a trustworthy one: they
+ * are incremented per event and never rewound, so the purges this table has
+ * been through during development left them claiming seven refunds where the
+ * ledger holds one. The ledger is what a member's balance reconciles against,
+ * so it is what the console reports.
+ *
+ * A Scan applies its filter AFTER reading, so pulling the ledger rows in
+ * alongside the profiles costs no extra table traversal — this is the same
+ * single pass, returning more of what it already had to read.
  */
 async function adminStats() {
-  const all = await allProfiles();
-  let india = 0, tokens = 0;
-  for (const u of all as any[]) {
-    if (u.country === 'IN') india++;
-    tokens += Number(u.tokenBalance ?? 0);
-  }
+  let users = 0, india = 0, outstanding = 0, spent = 0, refunded = 0;
+  let ExclusiveStartKey: any = undefined;
+  do {
+    const r: any = await ddb.send(new ScanCommand({
+      TableName: TABLE_NAME,
+      FilterExpression: 'entityType IN (:u, :t)',
+      ProjectionExpression: 'entityType, country, tokenBalance, #r, #d',
+      ExpressionAttributeNames: { '#r': 'reason', '#d': 'delta' },
+      ExpressionAttributeValues: { ':u': 'USER', ':t': 'TXN' },
+      ExclusiveStartKey,
+    }));
+    for (const it of (r.Items ?? []) as any[]) {
+      if (it.entityType === 'USER') {
+        users++;
+        if (it.country === 'IN') india++;
+        outstanding += Number(it.tokenBalance ?? 0);
+      } else {
+        const reason = String(it.reason ?? '');
+        // Read the magnitude off the row rather than assuming one token, so a
+        // future multi-token action is counted at what it actually cost.
+        if (SPEND_REASONS.has(reason)) spent += Math.abs(Number(it.delta ?? 0));
+        else if (REFUND_REASONS.has(reason)) refunded += Math.abs(Number(it.delta ?? 0));
+      }
+    }
+    ExclusiveStartKey = r.LastEvaluatedKey;
+  } while (ExclusiveStartKey);
+
   return {
-    totalUsers: all.length,
+    totalUsers: users,
     usersIndia: india,
-    usersInternational: all.length - india,
-    tokensOutstanding: tokens,
+    usersInternational: users - india,
+    tokensOutstanding: outstanding,
+    // Spent and never returned: an invitation that connected two people, or one
+    // still in flight. A refunded token was never consumed.
+    tokensConsumed: spent - refunded,
+    tokensRefunded: refunded,
   };
 }
 
