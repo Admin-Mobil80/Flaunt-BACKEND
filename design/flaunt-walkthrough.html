@@ -1672,7 +1672,11 @@ function vProfileEdit() {
       <h1 class="big">Your profile</h1>
       <p style="margin:0;font-size:14px;color:var(--ink-soft);">This is what your connections see. Your email and country are fixed &mdash; country decides how you are billed.</p>
     </div>
-    ${S.profileError ? `<div id="pf-error" role="alert" style="border:1px solid #E0C3C3;background:#FBF0F0;padding:12px 14px;font-size:13px;color:var(--bad);">${esc(S.profileError)}</div>` : ''}
+    ${S.profileError ? `<div id="pf-error" role="alert" style="border:1px solid #E0C3C3;background:#FBF0F0;padding:14px 16px;display:flex;flex-direction:column;gap:5px;">
+      <span style="font-size:13.5px;font-weight:600;color:var(--bad);">Nothing was saved</span>
+      <span style="font-size:13px;color:var(--bad);">${esc(S.profileError)}</span>
+      <span style="font-size:12.5px;color:var(--ink-soft);">Your other changes are still in the form &mdash; fix this and save again.</span>
+    </div>` : ''}
 
     <div style="display:flex;flex-direction:column;gap:7px;">
       <span class="lbl">Email</span>
@@ -2104,8 +2108,14 @@ async function signUp() {
   const name = val('su-name');
   const designation = val('su-designation');
   const country = val('su-country');
-  if (!email || !name || !designation) {
-    S.auth.error = 'Email, full name and designation are required.'; render(); return;
+  const bioAtSignup = val('su-bio');
+  // The form has always said this field is required and never enforced it.
+  // An account created without one cannot save its profile at all afterwards:
+  // updateProfile validates every field before writing, so an empty bio
+  // rejects the whole save and takes the other fields down with it.
+  if (!email || !name || !designation || !bioAtSignup) {
+    S.auth.error = 'Email, full name, designation and professional description are all required.';
+    render(); return;
   }
   S.auth.busy = true; S.auth.error = null; S.auth.email = email; render();
   const attrs = [
@@ -2114,10 +2124,10 @@ async function signUp() {
     { Name: 'custom:country', Value: country || 'IN' },
     { Name: 'custom:designation', Value: designation }
   ];
-  const org = val('su-org'), loc = val('su-location'), bio = val('su-bio');
+  const org = val('su-org'), loc = val('su-location');
   if (org) attrs.push({ Name: 'custom:organisation', Value: org });
   if (loc) attrs.push({ Name: 'custom:location', Value: loc });
-  if (bio) attrs.push({ Name: 'custom:bio', Value: bio });
+  attrs.push({ Name: 'custom:bio', Value: bioAtSignup });
   try {
     await idp('SignUp', {
       ClientId: AUTH.clientId, Username: email,
