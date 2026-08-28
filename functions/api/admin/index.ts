@@ -5,6 +5,7 @@ import {
 } from '@aws-sdk/client-cognito-identity-provider';
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import * as k from '../../shared/keys';
+import * as email_ from '../../shared/email';
 import {
   ALLOWED_BUNDLE_SIZES, coerceBundleSize, isAllowedBundleSize,
   PAYMENT_MODES, coercePaymentMode, isPaymentMode, RAZORPAY_SECRET_BY_MODE,
@@ -13,6 +14,7 @@ import {
 
 const ROOT_ADMIN_EMAIL = (process.env.ROOT_ADMIN_EMAIL ?? '').toLowerCase();
 const BMS_POOL_ID = process.env.BMS_USER_POOL_ID ?? '';
+const CONSOLE_URL = process.env.CONSOLE_URL ?? 'https://bms.flaunt.network';
 
 const cognito = new CognitoIdentityProviderClient({});
 
@@ -146,6 +148,19 @@ async function adminAddStaff(admin: { email: string; role: string }, emailRaw: s
   }
 
   await createBmsUser(email);
+
+  // Tell them. Access nobody knows about is access nobody uses, and Cognito's
+  // own invitation is suppressed because it carries a password this console
+  // does not have. Sent after the account exists, so the link works when it
+  // arrives; a failure here must not undo a grant that already succeeded.
+  try {
+    await email_.send(email_.staffAddedEmail({
+      to: email, name: name?.trim() || null, addedBy: admin.email, consoleUrl: CONSOLE_URL,
+    }));
+  } catch (err) {
+    console.error(JSON.stringify({ msg: 'staff notification failed', to: email, err: String(err) }));
+  }
+
   return { email, name: name?.trim() || null, role: k.ADMIN_ROLES.STAFF, status: 'ACTIVE', addedBy: admin.email, createdAt };
 }
 

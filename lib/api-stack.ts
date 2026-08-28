@@ -9,7 +9,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as path from 'path';
-import { EnvProps, suffix } from './env-config';
+import { EnvProps, suffix, subdomainPrefix } from './env-config';
 
 export interface ApiStackProps extends StackProps, EnvProps {
   table: dynamodb.Table;
@@ -125,9 +125,16 @@ export class ApiStack extends Stack {
         // The resolver rejects any token not issued by this pool, so a member
         // token cannot reach an admin field.
         BMS_USER_POOL_ID: bmsUserPool.userPoolId,
+        OTP_FROM_EMAIL: otpFromEmail,
+        CONSOLE_URL: `https://${subdomainPrefix(envName)}bms.flaunt.network`,
       },
     });
     table.grantReadWriteData(adminFn);
+    // Adding a staff member emails them; nothing else here sends mail.
+    adminFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['ses:SendEmail', 'ses:SendRawEmail'],
+      resources: ['*'],
+    }));
 
     /**
      * Staff management needs to create and delete sign-in accounts in the BMS

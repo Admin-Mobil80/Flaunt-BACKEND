@@ -192,6 +192,33 @@ export function refundEmail(opts: { to: string; recipientEmail: string; reason: 
   };
 }
 
+/**
+ * Tells a new colleague they have console access.
+ *
+ * It has to say how to get in, because there is no password to send and no
+ * "set your password" link to click — an access grant with no instructions
+ * reads as a phishing attempt or as nothing at all.
+ */
+export function staffAddedEmail(opts: { to: string; name?: string | null; addedBy: string; consoleUrl: string }): Mail {
+  const { to, name, addedBy, consoleUrl } = opts;
+  const hello = name ? `${escapeHtml(name)}, you` : 'You';
+  return {
+    to,
+    subject: 'You have been given access to the Flaunt console',
+    html: layout(
+      'You can now sign in to the Flaunt console.',
+      `<p style="margin:0 0 12px;">${hello} were added by <strong style="font-weight:500;">${escapeHtml(addedBy)}</strong>.
+        The console shows real member data — accounts, invitations and payments.</p>
+       <p style="margin:0 0 12px;">There is no password. Enter this address and we email you a six-digit code.</p>
+       <p style="margin:0;color:#6B6459;font-size:13px;">If you were not expecting this, tell ${escapeHtml(addedBy)} — and ignore the link.</p>`,
+      { label: 'Open the console', url: consoleUrl }
+    ),
+    text: `${name ? name + ', you' : 'You'} were added to the Flaunt console by ${addedBy}.\n\n`
+      + `The console shows real member data. There is no password: enter this address and we email you a six-digit code.\n\n`
+      + `${consoleUrl}\n\nIf you were not expecting this, tell ${addedBy} and ignore the link.\n`,
+  };
+}
+
 export function escapeHtml(s: string): string {
   return String(s).replace(/[&<>"']/g, (c) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
