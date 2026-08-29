@@ -43,6 +43,8 @@ type Profile {
   viaOptions: [IntroPath!]!
   # True when a second address is on file but not yet proved.
   secondaryEmailUnverified: Boolean
+  industry: String
+  primaryUrl: String
   # When the photo was last replaced. Absent means no photo; the value doubles
   # as the cache-busting version, since the object key itself never changes.
   photoAt: String
@@ -64,6 +66,10 @@ type Me {
   # verification round-trip exists.
   secondaryEmail: String
   photoAt: String
+  # Chosen from a fixed list, so two people in the same industry match.
+  industry: String
+  # One link the member considers theirs — site, LinkedIn, Instagram.
+  primaryUrl: String
 }
 
 type Connection {
@@ -281,6 +287,8 @@ type Query {
   adminWhoAmI: AdminStaff! @aws_cognito_user_pools
   adminPricingConfig: PricingConfig! @aws_cognito_user_pools
   adminPaymentConfig: PaymentConfig! @aws_cognito_user_pools
+  # The closed industry list, so the console and the app never drift apart.
+  industries: [String!]!
 }
 
 type Mutation {
@@ -321,12 +329,19 @@ type Mutation {
     location: String
     bio: String
     secondaryEmail: String
+    industry: String
+    primaryUrl: String
   ): Me!
+  # Irreversible. Removes the account, both halves of every connection it
+  # holds, its invitations, its ledger, its photo and its sign-in.
+  deleteMyAccount: Boolean!
   # How many tokens a bundle contains. The amount charged does not change —
   # only what it buys. Restricted to 25, 50, 75 or 100.
   # Owner only. Creates their sign-in account and grants console access.
   adminAddStaff(email: String!, name: String): AdminStaff! @aws_cognito_user_pools
   adminRemoveStaff(email: String!): Boolean! @aws_cognito_user_pools
+  # Same purge a member can run on themselves. For spam and abuse.
+  adminDeleteUser(userId: ID!): Boolean! @aws_cognito_user_pools
   adminSetTokensPerBundle(tokens: Int!): PricingConfig! @aws_cognito_user_pools
   # How many tokens a new account is granted. 1–10.
   adminSetSignupTokens(tokens: Int!): PricingConfig! @aws_cognito_user_pools

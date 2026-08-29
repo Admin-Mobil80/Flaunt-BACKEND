@@ -7,9 +7,11 @@ import { ddb, TABLE_NAME } from '../../shared/ddb';
 import { priceForCountry, formatMinor, coerceBundleSize, coercePaymentMode } from '../../shared/pricing';
 import { credentials, createOrder } from '../../shared/razorpay';
 import * as k from '../../shared/keys';
+import { purgeUser } from '../../shared/purge';
 import { send, invitationEmail, refundEmail, gatekeeperEmail, introForwardEmail } from '../../shared/email';
 import {
   validateName, validateBio, validateDesignation, validateOrganisation, validateLocation,
+  validateIndustry, validatePrimaryUrl, INDUSTRIES,
   validateSecondaryEmail, ValidationError,
 } from '../../shared/validation';
 
@@ -78,6 +80,8 @@ async function me(userId: string) {
     createdAt: p.createdAt,
     connectionCount: conns.length,
     photoAt: p.photoAt ?? null,
+    industry: p.industry ?? null,
+    primaryUrl: p.primaryUrl ?? null,
   };
 }
 
@@ -369,6 +373,8 @@ async function updateProfile(userId: string, args: any) {
     for (const [field, validate] of [
       ['organisation', validateOrganisation],
       ['location', validateLocation],
+      ['industry', validateIndustry],
+      ['primaryUrl', validatePrimaryUrl],
     ] as const) {
       if (args[field] !== undefined && args[field] !== null) {
         const v = validate(args[field]);
@@ -840,6 +846,23 @@ const PHOTO_SIZES = { sm: 128, lg: 512 } as const;
 const photoKey = (userId: string, size: 'sm' | 'lg') => `photos/${userId}/${size}.webp`;
 
 /** Presigned PUTs for a member's own keys. Never for anyone else's. */
+/**
+ * A member removing themselves.
+ *
+ * Irreversible and immediate: the account, its connections on both sides, its
+ * invitations, its ledger and its photo. Returns true rather than a profile,
+ * because by the time it answers there is no profile to return.
+ */
+async function deleteMyAccount(userId: string) {
+  const r = await purgeUser(userId, {
+    photoBucket: PHOTO_BUCKET || undefined,
+    userPoolId: process.env.USER_POOL_ID || undefined,
+  });
+  if (!r.found) throw new Error('Account not found');
+  console.log(JSON.stringify({ msg: 'account deleted by member', userId, ...r, email: undefined }));
+  return true;
+}
+
 async function createPhotoUpload(userId: string) {
   if (!PHOTO_BUCKET) throw new Error('Photo uploads are not configured');
   const urls = await Promise.all((['sm', 'lg'] as const).map(async (size) => ({
@@ -1373,6 +1396,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'removeConnection': return removeConnection(userId, args.userId);
     case 'sendInvitation': return sendInvitation(userId, args.email);
     case 'updateProfile': return updateProfile(userId, args);
+    case 'deleteMyAccount': return deleteMyAccount(userId);
     case 'createPhotoUpload': return createPhotoUpload(userId);
     case 'confirmPhotoUpload': return confirmPhotoUpload(userId);
     case 'removeProfilePhoto': return removeProfilePhoto(userId);
@@ -1380,6 +1404,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     // Name search needs the GSI3 NAME# namespace and the degree walk; until
     // that lands it returns nothing rather than something invented.
     case 'searchPeople': return [];
+    case 'industries': return INDUSTRIES;
     default: throw new Error(`Unknown field ${field}`);
   }
 };

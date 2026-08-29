@@ -65,6 +65,24 @@ export const ORGANISATION_MAX_CHARS = 100;
  * either direction is a billing bug.
  */
 export const LOCATION_MAX_CHARS = 80;
+export const URL_MAX_CHARS = 200;
+
+/**
+ * A closed list, because the point of an industry field is that two people in
+ * the same one can be recognised as such. Free text gives you "Fintech",
+ * "FinTech" and "Financial Technology" as three different industries.
+ */
+export const INDUSTRIES = [
+  'Advertising & Marketing', 'Aerospace & Defence', 'Agriculture', 'Architecture & Design',
+  'Automotive', 'Aviation', 'Banking & Financial Services', 'Biotechnology',
+  'Construction & Real Estate', 'Consulting', 'Consumer Goods', 'Education',
+  'Energy & Utilities', 'Entertainment & Media', 'Fashion & Apparel', 'Food & Beverage',
+  'Government & Public Sector', 'Healthcare', 'Hospitality & Travel', 'Insurance',
+  'Legal', 'Logistics & Supply Chain', 'Manufacturing', 'Mining & Metals',
+  'Non-profit', 'Pharmaceuticals', 'Professional Services', 'Retail & E-commerce',
+  'Software & Technology', 'Sports & Fitness', 'Telecommunications', 'Venture Capital & Private Equity',
+  'Other',
+] as const;
 
 export class ValidationError extends Error {
   public readonly field: string;
@@ -165,6 +183,41 @@ export function validateOrganisation(organisation: unknown): string | undefined 
 }
 
 /** Optional: an omitted or blank location is valid and stored as undefined. */
+export function validateIndustry(industry: unknown): string | undefined {
+  if (industry === undefined || industry === null || String(industry).trim() === '') return undefined;
+  const v = String(industry).trim();
+  if (!(INDUSTRIES as readonly string[]).includes(v)) {
+    throw new ValidationError('industry', 'Choose an industry from the list.');
+  }
+  return v;
+}
+
+/**
+ * One link, whatever the person considers theirs — a site, a LinkedIn, an
+ * Instagram. Scheme is added when missing, because people type "acme.com" and
+ * a link that does not open is worse than no link.
+ *
+ * Only http and https are allowed: javascript: and data: URLs in a field that
+ * other members click would be a scripting hole dressed as a profile.
+ */
+export function validatePrimaryUrl(url: unknown): string | undefined {
+  if (url === undefined || url === null || String(url).trim() === '') return undefined;
+  let raw = String(url).trim();
+  if (raw.length > URL_MAX_CHARS) {
+    throw new ValidationError('primaryUrl', `Link must be ${URL_MAX_CHARS} characters or fewer.`);
+  }
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(raw)) raw = `https://${raw}`;
+  let parsed: URL;
+  try { parsed = new URL(raw); } catch { throw new ValidationError('primaryUrl', 'That does not look like a web address.'); }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new ValidationError('primaryUrl', 'Links must start with http:// or https://.');
+  }
+  if (!parsed.hostname.includes('.')) {
+    throw new ValidationError('primaryUrl', 'That does not look like a web address.');
+  }
+  return parsed.toString();
+}
+
 export function validateLocation(location: unknown): string | undefined {
   if (location === undefined || location === null || String(location).trim() === '') {
     return undefined;

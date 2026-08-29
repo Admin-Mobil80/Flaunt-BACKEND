@@ -720,7 +720,7 @@ async function openProfile(userId) {
   try {
     const d = await gql(`query P($id:ID!){ profile(userId:$id){
       userId name designation organisation location bio country
-      primaryEmail secondaryEmail secondaryEmailUnverified connectedAt degree viaName viaUserId photoAt
+      primaryEmail secondaryEmail secondaryEmailUnverified connectedAt degree viaName viaUserId photoAt industry primaryUrl
       viaOptions { userId name designation photoAt } } }`, { id: userId });
     S.viewing = { loading: false, userId, profile: d.profile, error: null, theirs: null, theirsLoading: false, tab: 'details' };
   } catch (e) {
@@ -946,6 +946,16 @@ function vProfile(id) {
     </div>` : ''}
 
     ${(v.tab || 'details') !== 'details' ? '' : `
+      ${(p.industry || p.primaryUrl) ? `<div class="grid2">
+        ${p.industry ? `<div style="display:flex;flex-direction:column;gap:3px;">
+          <span class="lbl">Industry</span>
+          <span style="font-size:14px;color:var(--ink-2);">${esc(p.industry)}</span></div>` : ''}
+        ${p.primaryUrl ? `<div style="display:flex;flex-direction:column;gap:3px;min-width:0;">
+          <span class="lbl">Link</span>
+          <a class="trunc" href="${esc(p.primaryUrl)}" target="_blank" rel="noopener noreferrer nofollow"
+            style="font-size:14px;color:var(--accent);">${esc(String(p.primaryUrl).replace(/^https?:\/\//,'').replace(/\/$/,''))}</a></div>` : ''}
+      </div>` : ''}
+
     ${p.bio ? `<div style="display:flex;flex-direction:column;gap:12px;">
       <span class="lbl">Professional description</span>
       <p style="margin:0;font-size:15px;line-height:1.72;color:var(--ink-2);max-width:62ch;text-wrap:pretty;">${esc(p.bio)}</p>
@@ -1327,6 +1337,28 @@ async function reloadUsers() {
   finally { S.usersLoading = false; render(); }
 }
 
+/**
+ * Removing a spam account from the console.
+ *
+ * Typing the address is the confirmation, because the rows in this table look
+ * alike and the wrong click here deletes a real member's network, not just
+ * theirs — every connection they hold disappears from the other side too.
+ */
+async function adminDeleteUser(userId, email) {
+  const typed = prompt(
+    `Delete ${email}?\n\nThis removes their profile, their connections from BOTH sides, their invitations, `
+    + `their tokens and their sign-in. It cannot be undone.\n\nType the email address to confirm:`);
+  if (String(typed || '').trim().toLowerCase() !== String(email).toLowerCase()) {
+    if (typed !== null) toast('That did not match. Nothing was deleted.');
+    return;
+  }
+  try {
+    await gql(`mutation D($u:ID!){ adminDeleteUser(userId:$u) }`, { u: userId });
+    toast(`${email} has been removed.`);
+    await loadBms();
+  } catch (e) { toast(e.message); }
+}
+
 function vBmsUsers() {
   const st = S.stats || { totalUsers: 0, usersIndia: 0, usersInternational: 0, tokensOutstanding: 0, tokensConsumed: 0, tokensRefunded: 0 };
   const pc = S.pricing;
@@ -1337,6 +1369,9 @@ function vBmsUsers() {
     <td class="mono" style="font-size:13px;font-weight:600;">${u.tokenBalance}</td>
     <td class="mono" style="font-size:12px;color:var(--bms-soft);">${u.connectionCount}</td>
     <td class="mono" style="font-size:11.5px;color:var(--bms-mute);">${esc(String(u.createdAt).slice(0,10))}</td>
+    <td style="text-align:right;">
+      <button class="pill" style="border-color:var(--bms-bad-line);color:var(--bms-bad);"
+        onclick="adminDeleteUser('${u.userId}','${esc(u.email)}')">Delete</button></td>
 </tr>`).join('');
 
 
@@ -1381,7 +1416,7 @@ function vBmsUsers() {
     </div>
 
     ${S.users.length ? `<div class="tblwrap"><table>
-      <thead><tr><th>Name</th><th>Primary email</th><th>Country</th><th>Tokens</th><th>Connections</th><th>Joined</th></tr></thead>
+      <thead><tr><th>Name</th><th>Primary email</th><th>Country</th><th>Tokens</th><th>Connections</th><th>Joined</th><th></th></tr></thead>
       <tbody>${rows}</tbody>
     </table></div>` : `<div style="border:1px solid var(--bms-rule);background:var(--bms-panel);padding:30px;font-size:13px;color:var(--bms-mute);">${
       S.userQuery ? `No account matches &ldquo;${esc(S.userQuery)}&rdquo;.` : 'No accounts yet. The first sign-up on flaunt.network will appear here.'}</div>`}
@@ -1787,7 +1822,8 @@ async function gql(query, variables) {
 }
 
 const Q_PORTAL = `query Portal {
-  me { userId name email designation organisation location bio country tokenBalance createdAt connectionCount secondaryEmail photoAt }
+  me { userId name email designation organisation location bio country tokenBalance createdAt connectionCount secondaryEmail photoAt industry primaryUrl }
+  industries
   myConnections { userId name designation organisation location connectedAt connectionCount photoAt bio }
   myInvitations { inviteId recipientEmail status type createdAt daysLeft tokenOutcome targetName gatekeeperName direction }
   incomingInvitations { inviteId recipientEmail senderName senderDesignation status type createdAt daysLeft tokenOutcome direction senderUserId senderPhotoAt }
@@ -1804,7 +1840,7 @@ async function loadPortal() {
   S.loading = true; S.dataError = null; render();
   try {
     const d = await gql(Q_PORTAL);
-    S.me = d.me;
+    S.me = d.me; S.industries = d.industries || S.industries || [];
     S.connections = d.myConnections || [];
     // second degree is paged separately
     S.invites = d.myInvitations || [];
@@ -1829,6 +1865,31 @@ async function loadPortal() {
   }
 }
 
+/**
+ * Removing your own account.
+ *
+ * Two confirmations, the second requiring the word to be typed, because the
+ * first one is muscle memory by the time anyone reaches it and this cannot be
+ * undone — the connections go from other people's networks too.
+ */
+async function deleteMyAccount() {
+  const n = (S.connections || []).length;
+  if (!confirm(
+    'Delete your Flaunt account?\n\n'
+    + `This removes your profile, your ${n} connection${n === 1 ? '' : 's'} (from their side as well), `
+    + 'your invitations, your token balance and your sign-in.\n\nIt cannot be undone.')) return;
+  const typed = prompt('This is permanent. Type DELETE to confirm.');
+  if (String(typed || '').trim().toUpperCase() !== 'DELETE') { toast('Not deleted.'); return; }
+  try {
+    await gql('mutation { deleteMyAccount }');
+    try { sessionStorage.removeItem(SESSION_KEY); } catch (e) {}
+    reset();
+    alert('Your account has been deleted. Thank you for trying Flaunt.');
+    location.hash = '#/';
+    render();
+  } catch (e) { toast(e.message || 'Could not delete the account.'); }
+}
+
 async function saveProfile() {
   const v = (id) => { const e = document.getElementById(id); return e ? e.value : ''; };
   // Read every field BEFORE re-rendering. render() rebuilds the form from S.me,
@@ -1838,12 +1899,13 @@ async function saveProfile() {
   const payload = {
     n: v('pf-name'), d: v('pf-designation'), o: v('pf-org'),
     l: v('pf-location'), b: v('pf-bio'), s2: v('pf-email2'),
+    ind: v('pf-industry'), url: v('pf-url'),
   };
   S.saving = true; S.profileError = null; render();
   try {
-    const d = await gql(`mutation Upd($n:String,$d:String,$o:String,$l:String,$b:String,$s2:String){
-      updateProfile(name:$n, designation:$d, organisation:$o, location:$l, bio:$b, secondaryEmail:$s2){
-        userId name designation organisation location bio country tokenBalance createdAt connectionCount email secondaryEmail } }`,
+    const d = await gql(`mutation Upd($n:String,$d:String,$o:String,$l:String,$b:String,$s2:String,$ind:String,$url:String){
+      updateProfile(name:$n, designation:$d, organisation:$o, location:$l, bio:$b, secondaryEmail:$s2, industry:$ind, primaryUrl:$url){
+        userId name designation organisation location bio country tokenBalance createdAt connectionCount email secondaryEmail photoAt industry primaryUrl } }`,
       payload);
     S.me = d.updateProfile;
     S.profileDraft = null;
@@ -1989,6 +2051,7 @@ function vProfileEdit() {
   const m = dr ? {
     ...base, name: dr.n, designation: dr.d, organisation: dr.o,
     location: dr.l, bio: dr.b, secondaryEmail: dr.s2,
+    industry: dr.ind, primaryUrl: dr.url,
   } : base;
   const d = S.saving ? 'disabled' : '';
   const words = String(m.bio || '').trim() ? String(m.bio).trim().split(/\s+/).length : 0;
@@ -2045,6 +2108,18 @@ function vProfileEdit() {
       <input class="field" id="pf-org" maxlength="100" ${d} value="${esc(m.organisation || '')}">
     </div>
     <div style="display:flex;flex-direction:column;gap:7px;">
+      <div style="display:flex;justify-content:space-between;"><label class="lbl" for="pf-industry">Industry</label><span class="lbl">Optional</span></div>
+      <select class="field" id="pf-industry" ${d}>
+        <option value=""${m.industry ? '' : ' selected'}>&mdash;</option>
+        ${(S.industries || []).map((i) => `<option value="${esc(i)}"${m.industry === i ? ' selected' : ''}>${esc(i)}</option>`).join('')}
+      </select>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px;">
+      <div style="display:flex;justify-content:space-between;"><label class="lbl" for="pf-url">Link</label><span class="lbl">Optional</span></div>
+      <input class="field" id="pf-url" ${d} value="${esc(m.primaryUrl || '')}" placeholder="yoursite.com, linkedin.com/in/you, instagram.com/you">
+      <span style="font-size:11.5px;color:var(--faint);">One address that is yours &mdash; a site, a profile, anywhere. https:// is added if you leave it out.</span>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:7px;">
       <div style="display:flex;justify-content:space-between;"><label class="lbl" for="pf-location">Location</label><span class="lbl">Optional</span></div>
       <input class="field" id="pf-location" maxlength="80" ${d} value="${esc(m.location || '')}">
     </div>
@@ -2065,6 +2140,15 @@ function vProfileEdit() {
       <button class="btn" ${d} onclick="saveProfile()">${S.saving ? 'Saving…' : 'Save changes'}</button>
       <button ${d} onclick="S.profileDraft=null;S.profileError=null;go('#/network');" style="background:none;border:none;font-size:13px;color:var(--ink-soft);">Cancel</button>
     </div>
+
+      <div style="border-top:1px solid var(--rule);margin-top:14px;padding-top:20px;display:flex;flex-direction:column;gap:8px;align-items:flex-start;">
+        <span class="lbl" style="color:var(--bad);">Delete account</span>
+        <p style="margin:0;font-size:12.5px;color:var(--ink-soft);max-width:60ch;line-height:1.6;">
+          Removes your profile, your connections &mdash; from the other person&rsquo;s network too &mdash; your
+          invitations, your remaining tokens and your sign-in. It cannot be undone and there is no refund.</p>
+        <button ${d} onclick="deleteMyAccount()"
+          style="background:none;border:1px solid var(--bad);color:var(--bad);font-size:12.5px;padding:7px 14px;">Delete my account</button>
+      </div>
   </div></div>`;
 }
 
@@ -2329,7 +2413,7 @@ async function buyTokens() {
 async function refreshPortal() {
   try {
     const d = await gql(Q_PORTAL);
-    S.me = d.me; S.connections = d.myConnections || [];
+    S.me = d.me; S.industries = d.industries || S.industries || []; S.connections = d.myConnections || [];
     S.second = d.secondDegree || [];
     S.invites = d.myInvitations || []; S.incoming = d.incomingInvitations || []; S.price = d.tokenPrice; S.payMode = d.paymentMode;
   } catch (e) { S.dataError = e.message; }

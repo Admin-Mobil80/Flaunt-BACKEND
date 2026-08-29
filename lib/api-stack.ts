@@ -94,6 +94,7 @@ export class ApiStack extends Stack {
         OTP_FROM_EMAIL: otpFromEmail,
         PORTAL_URL: portalUrl,
         PHOTO_BUCKET: photoBucket.bucketName,
+        USER_POOL_ID: userPool.userPoolId,
       },
     });
     table.grantReadWriteData(portalFn);
@@ -127,6 +128,8 @@ export class ApiStack extends Stack {
         BMS_USER_POOL_ID: bmsUserPool.userPoolId,
         OTP_FROM_EMAIL: otpFromEmail,
         CONSOLE_URL: `https://${subdomainPrefix(envName)}bms.flaunt.network`,
+        PHOTO_BUCKET: photoBucket.bucketName,
+        MEMBER_USER_POOL_ID: userPool.userPoolId,
       },
     });
     table.grantReadWriteData(adminFn);
@@ -135,6 +138,12 @@ export class ApiStack extends Stack {
       actions: ['ses:SendEmail', 'ses:SendRawEmail'],
       resources: ['*'],
     }));
+    // Removing a spam account removes its sign-in and its photo too.
+    adminFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['cognito-idp:AdminDeleteUser'],
+      resources: [userPool.userPoolArn],
+    }));
+    photoBucket.grantDelete(adminFn);
 
     /**
      * Staff management needs to create and delete sign-in accounts in the BMS
@@ -151,6 +160,12 @@ export class ApiStack extends Stack {
      * resolver never needs GetObject — HeadObject is how it checks an upload
      * landed, which is a read of metadata rather than of anyone's face.
      */
+    // Deleting an account removes its sign-in, so the member cannot come back
+    // to a profile that is gone.
+    portalFn.addToRolePolicy(new iam.PolicyStatement({
+      actions: ['cognito-idp:AdminDeleteUser'],
+      resources: [userPool.userPoolArn],
+    }));
     photoBucket.grantPut(portalFn);
     photoBucket.grantDelete(portalFn);
     portalFn.addToRolePolicy(new iam.PolicyStatement({
@@ -161,13 +176,13 @@ export class ApiStack extends Stack {
     const portalDs = this.api.addLambdaDataSource('PortalDataSource', portalFn);
     const adminDs = this.api.addLambdaDataSource('AdminDataSource', adminFn);
 
-    for (const field of ['me', 'myConnections', 'secondDegree', 'myInvitations', 'incomingInvitations', 'tokenPrice', 'paymentMode', 'searchPeople', 'invitation', 'profile', 'connectionsOf', 'gatekeeperRequests']) {
+    for (const field of ['me', 'myConnections', 'secondDegree', 'myInvitations', 'incomingInvitations', 'tokenPrice', 'paymentMode', 'searchPeople', 'invitation', 'profile', 'connectionsOf', 'gatekeeperRequests', 'industries']) {
       portalDs.createResolver(`Query${field}`, { typeName: 'Query', fieldName: field });
     }
     portalDs.createResolver('MutationsendInvitation', { typeName: 'Mutation', fieldName: 'sendInvitation' });
     portalDs.createResolver('MutationupdateProfile', { typeName: 'Mutation', fieldName: 'updateProfile' });
     portalDs.createResolver('MutationcreatePaymentOrder', { typeName: 'Mutation', fieldName: 'createPaymentOrder' });
-    for (const f of ['createPhotoUpload', 'confirmPhotoUpload', 'removeProfilePhoto']) {
+    for (const f of ['createPhotoUpload', 'confirmPhotoUpload', 'removeProfilePhoto', 'deleteMyAccount']) {
       portalDs.createResolver(`Mutation${f}`, { typeName: 'Mutation', fieldName: f });
     }
     portalDs.createResolver('MutationacceptInvitation', { typeName: 'Mutation', fieldName: 'acceptInvitation' });
@@ -183,6 +198,7 @@ export class ApiStack extends Stack {
     }
     adminDs.createResolver('MutationadminAddStaff', { typeName: 'Mutation', fieldName: 'adminAddStaff' });
     adminDs.createResolver('MutationadminRemoveStaff', { typeName: 'Mutation', fieldName: 'adminRemoveStaff' });
+    adminDs.createResolver('MutationadminDeleteUser', { typeName: 'Mutation', fieldName: 'adminDeleteUser' });
     adminDs.createResolver('MutationadminSetTokensPerBundle', { typeName: 'Mutation', fieldName: 'adminSetTokensPerBundle' });
     adminDs.createResolver('MutationadminSetPaymentMode', { typeName: 'Mutation', fieldName: 'adminSetPaymentMode' });
     adminDs.createResolver('MutationadminSetSignupTokens', { typeName: 'Mutation', fieldName: 'adminSetSignupTokens' });

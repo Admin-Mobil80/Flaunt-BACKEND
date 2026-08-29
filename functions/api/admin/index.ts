@@ -6,6 +6,7 @@ import {
 import { ddb, TABLE_NAME } from '../../shared/ddb';
 import * as k from '../../shared/keys';
 import * as email_ from '../../shared/email';
+import { purgeUser } from '../../shared/purge';
 import {
   ALLOWED_BUNDLE_SIZES, coerceBundleSize, isAllowedBundleSize,
   PAYMENT_MODES, coercePaymentMode, isPaymentMode, RAZORPAY_SECRET_BY_MODE,
@@ -15,6 +16,8 @@ import {
 const ROOT_ADMIN_EMAIL = (process.env.ROOT_ADMIN_EMAIL ?? '').toLowerCase();
 const BMS_POOL_ID = process.env.BMS_USER_POOL_ID ?? '';
 const CONSOLE_URL = process.env.CONSOLE_URL ?? 'https://bms.flaunt.network';
+const PHOTO_BUCKET = process.env.PHOTO_BUCKET ?? '';
+const MEMBER_POOL_ID = process.env.MEMBER_USER_POOL_ID ?? '';
 
 const cognito = new CognitoIdentityProviderClient({});
 
@@ -80,6 +83,24 @@ async function assertAdmin(event: any): Promise<{ email: string; role: string }>
 /** Only the owner may change who else has access. */
 function assertOwner(admin: { role: string }) {
   if (admin.role !== k.ADMIN_ROLES.OWNER) throw new Error('Only the owner can change staff access');
+}
+
+/**
+ * Removes a member from the console — for spam and abuse, not for tidying.
+ *
+ * The same purge a member can run on themselves, so a deleted account leaves
+ * the same clean state either way: no half-connections on other people's
+ * lists, no invitations from someone who no longer exists.
+ */
+async function adminDeleteUser(admin: { email: string }, userId: string) {
+  if (!userId) throw new Error('Which account?');
+  const r = await purgeUser(userId, {
+    photoBucket: PHOTO_BUCKET || undefined,
+    userPoolId: MEMBER_POOL_ID || undefined,
+  });
+  if (!r.found) throw new Error('That account no longer exists');
+  console.log(JSON.stringify({ msg: 'account deleted by admin', by: admin.email, userId, ...r }));
+  return true;
 }
 
 async function adminStaff() {
@@ -579,6 +600,7 @@ export const handler = async (event: AppSyncResolverEvent<any>) => {
     case 'adminStaff': return adminStaff();
     case 'adminAddStaff': return adminAddStaff(admin, args.email, args.name);
     case 'adminRemoveStaff': return adminRemoveStaff(admin, args.email);
+    case 'adminDeleteUser': return adminDeleteUser(admin, args.userId);
     case 'adminWhoAmI': return { email: admin.email, name: null, role: admin.role, status: 'ACTIVE', addedBy: null, createdAt: null };
     case 'adminPayments': return adminPayments(args.limit ?? 50, args.offset ?? 0, args.mode);
     case 'adminPricingConfig': return adminPricingConfig();
