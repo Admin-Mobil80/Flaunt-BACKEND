@@ -392,7 +392,7 @@ function reset() {
         invites:[],
         connected:{}, introAsked:false,
         me:null, connections:[], invites:[], price:null, netTab:'direct', netFilter:'',
-        second:[], secondTotal:0, secondOffset:0, secondHasMore:false, secondLoading:false, secondError:null,
+        second:[], secondTotal:0, secondOffset:0, secondHasMore:false, secondLoading:false, secondLoaded:false, secondError:null,
         gatekeeper:null, gkLoading:false, gkError:null,
         loading:false, dataError:null, landed:false, newVersion:false, sending:false, buying:false, payMode:null,
         stats:null, users:[], adminInvites:[], pricing:null, payment:null, saving:false, profileError:null,
@@ -605,7 +605,11 @@ function vNetwork() {
     .filter(Boolean).some((f) => String(f).toLowerCase().includes(q));
 
   const tab = S.netTab === 'second' ? 'second' : 'direct';
-  if (tab === 'second' && S.second.length === 0 && !S.secondLoading && !S.secondError) loadSecond(0);
+  // Gate on whether it has been LOADED, not on whether it found anyone. An
+  // empty second degree left this condition true forever: every render started
+  // another load, which rendered, which started another — the spinner never
+  // cleared and the most expensive query in the system ran in a loop.
+  if (tab === 'second' && !S.secondLoaded && !S.secondLoading && !S.secondError) loadSecond(0);
 
   const direct = S.connections.filter(matches);
   const second = q ? S.second : S.second.filter(matches);
@@ -2192,7 +2196,7 @@ async function loadSecond(offset = 0) {
     S.secondHasMore = page.hasMore;
     S.secondOffset = offset + page.items.length;
   } catch (e) { S.secondError = e.message; }
-  finally { S.secondLoading = false; render(); }
+  finally { S.secondLoading = false; S.secondLoaded = true; render(); }
 }
 
 /**
@@ -2207,7 +2211,7 @@ function onNetFilter(value) {
   S.secondSearching = true; render();
   S._netTimer = setTimeout(() => {
     S.secondSearching = false;
-    S.second = []; S.secondOffset = 0;
+    S.second = []; S.secondOffset = 0; S.secondLoaded = false;
     loadSecond(0);
   }, 300);
 }
